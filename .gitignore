@@ -11,3 +11,5 @@ backend/node_modules
 .railway
 tsconfig.tsbuildinfo
 
+
+.vercel
