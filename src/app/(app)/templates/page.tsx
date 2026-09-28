@@ -18,8 +18,8 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-8 pb-16">
       <div>
-        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--muted)]">Сценарии</p>
-        <h1 className="font-serif text-4xl md:text-5xl mt-2">Шаблоны обучения</h1>
+        <p className="text-[11px] font-semibold text-[var(--muted)]">Сценарии</p>
+        <h1 className="font-semibold mt-2">Шаблоны обучения</h1>
         <p className="text-[var(--muted)] mt-3 max-w-2xl">
           Готовые режимы репетитора: экзамен, подсказки, другой язык, фото, сочинение. Один клик — урок уже в нужном стиле.
         </p>

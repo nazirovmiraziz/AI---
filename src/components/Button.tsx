@@ -1,32 +1,52 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { ButtonHTMLAttributes } from "react";
+import Link from "next/link";
+import type { ButtonHTMLAttributes, MouseEventHandler } from "react";
+
+type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "glow" | "light" | "ai";
+  magnetic?: boolean;
+  href?: string;
+};
 
 export function Button({
   variant = "primary",
+  magnetic = false,
   className,
+  children,
+  href,
+  type = "button",
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger" | "glow" | "light";
-}) {
+}: Props) {
+  const cls = clsx(
+    "shine inline-flex items-center justify-center gap-2 rounded-full px-4 sm:px-5 py-2.5 text-sm font-semibold disabled:opacity-50 disabled:pointer-events-none min-h-11 max-w-full active:scale-[0.97]",
+    (variant === "primary" || variant === "glow") && "btn-primary",
+    (variant === "secondary" || variant === "light") && "btn-secondary",
+    variant === "ghost" && "btn-ghost",
+    variant === "ai" && "btn-ai",
+    variant === "danger" && "bg-[#b42318] text-white hover:bg-[#c9372c]",
+    magnetic && "mag-cta",
+    className
+  );
+  const inner = <span className="relative z-[1] inline-flex items-center justify-center gap-2">{children}</span>;
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={cls}
+        onClick={onClick as unknown as MouseEventHandler<HTMLAnchorElement>}
+        onMouseEnter={props.onMouseEnter as unknown as MouseEventHandler<HTMLAnchorElement>}
+        onMouseLeave={props.onMouseLeave as unknown as MouseEventHandler<HTMLAnchorElement>}
+      >
+        {inner}
+      </Link>
+    );
+  }
   return (
-    <button
-      className={clsx(
-        "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium tracking-tight transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]",
-        variant === "primary" &&
-          "bg-brand-600 text-white shadow-glow hover:bg-brand-500 hover:-translate-y-0.5",
-        variant === "secondary" &&
-          "bg-[var(--bg-elev)] border border-[var(--line)] hover:border-brand-300 hover:-translate-y-0.5",
-        variant === "ghost" && "hover:bg-black/5 dark:hover:bg-white/5",
-        variant === "danger" && "bg-red-600 text-white hover:bg-red-700",
-        variant === "glow" &&
-          "bg-white text-ink-950 shadow-glow hover:bg-brand-50 hover:-translate-y-0.5",
-        variant === "light" &&
-          "border border-white/15 bg-white/5 text-white hover:bg-white/10 hover:-translate-y-0.5",
-        className
-      )}
-      {...props}
-    />
+    <button type={type} className={cls} onClick={onClick} {...props}>
+      {inner}
+    </button>
   );
 }

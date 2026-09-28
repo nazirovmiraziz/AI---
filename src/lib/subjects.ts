@@ -26,6 +26,7 @@ export const SUBJECTS: Subject[] = [
       { id: "kinematics", subjectId: "physics", grade: [8, 9], difficulty: "medium", minutes: 15 },
       { id: "ohm", subjectId: "physics", grade: [8, 9, 10], difficulty: "medium", minutes: 12 },
       { id: "newton", subjectId: "physics", grade: [9, 10], difficulty: "medium", minutes: 16 },
+      { id: "energy", subjectId: "physics", grade: [8, 9, 10], difficulty: "medium", minutes: 14 },
       { id: "optics", subjectId: "physics", grade: [8, 9], difficulty: "easy", minutes: 12 },
       { id: "sky-blue", subjectId: "physics", grade: [7, 8, 9], difficulty: "easy", minutes: 8 },
     ],

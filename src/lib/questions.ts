@@ -211,6 +211,55 @@ export const QUESTION_BANK: TestQuestion[] = [
     topic: "ohm",
     difficulty: 3,
   },
+  {
+    id: "q21",
+    type: "single",
+    prompt: "Второй закон Ньютона: сила F равна",
+    options: ["m / a", "m + a", "m · a", "a / m"],
+    answer: "m · a",
+    explanation: "Сила — масса умножить на ускорение. F = ma.",
+    topic: "newton",
+    difficulty: 1,
+  },
+  {
+    id: "q22",
+    type: "input",
+    prompt: "Масса 4 кг, ускорение 2 м/с². Чему равна сила в ньютонах?",
+    answer: "8",
+    explanation: "F = 4 × 2 = 8 Н.",
+    topic: "newton",
+    difficulty: 2,
+  },
+  {
+    id: "q23",
+    type: "boolean",
+    prompt: "Если на тело не действует сила, его скорость всё равно меняется.",
+    options: ["Верно", "Неверно"],
+    answer: false,
+    explanation: "Без силы скорость не меняется. Это первый закон Ньютона.",
+    topic: "newton",
+    difficulty: 1,
+  },
+  {
+    id: "q24",
+    type: "single",
+    prompt: "Кинетическая энергия больше зависит от",
+    options: ["цвета тела", "скорости", "названия", "температуры воздуха"],
+    answer: "скорости",
+    explanation: "В формуле mv²/2 скорость в квадрате, поэтому она влияет сильнее.",
+    topic: "energy",
+    difficulty: 2,
+  },
+  {
+    id: "q25",
+    type: "boolean",
+    prompt: "Работа есть, когда сила сдвигает тело.",
+    options: ["Верно", "Неверно"],
+    answer: true,
+    explanation: "Если тело не сдвинулось, работы нет.",
+    topic: "energy",
+    difficulty: 1,
+  },
 ];
 
 export function pickAdaptive(topic: string, difficulty: number, used: string[], count: number) {
@@ -221,13 +270,6 @@ export function pickAdaptive(topic: string, difficulty: number, used: string[], 
     (a, b) => Math.abs(a.difficulty - difficulty) - Math.abs(b.difficulty - difficulty)
   );
   const selected = nearby.slice(0, count);
-  if (selected.length < count) {
-    const extra = QUESTION_BANK.filter((q) => !used.includes(q.id) && !selected.includes(q)).slice(
-      0,
-      count - selected.length
-    );
-    return [...selected, ...extra];
-  }
   return selected;
 }
 

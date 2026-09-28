@@ -1,21 +1,46 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { Mic, Pin, Plus, Search, Send, Volume2 } from "lucide-react";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { Camera, Mic, Paperclip, Pause, Play, Plus, Send, Square, X } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import { Button } from "@/components/Button";
-import { ProgressBar } from "@/components/ProgressBar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Formula } from "@/components/Formula";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { askAi } from "@/lib/ask-ai";
+import { askSchoolAi } from "@/lib/ai/service";
+import { AI_MODES, titleFromQuestion } from "@/lib/ai/modes";
+import { groupChatsByDay } from "@/lib/ai/context";
 import { evaluateStudentAnswer } from "@/lib/ai-engine";
-import type { ExplainStyle } from "@/lib/types";
-import { XP_REWARDS } from "@/lib/demo-data";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { DEMO_EMAIL, XP_REWARDS } from "@/lib/demo-data";
+import { ChatText } from "@/components/ChatText";
+import { TutorBot } from "@/components/TutorBot";
+import { VoiceWave } from "@/components/VoiceWave";
+import type { BotMood } from "@/components/TutorBot";
+import { firstName, stripFakeNames } from "@/lib/cabinet";
+import type { AiMode } from "@/lib/types";
 
-const STYLES: ExplainStyle[] = ["child", "student", "teacher", "short", "detailed", "steps", "funny", "exam", "simple"];
+const QUICK = [
+  { id: "math", label: "Квадратные уравнения", prompt: "Объясни квадратные уравнения простыми словами. Коротко и по делу." },
+  { id: "en", label: "Практика английского", prompt: "Дай одно короткое упражнение на Present Simple и проверь меня." },
+  { id: "hw", label: "Помощь с домашкой", prompt: "Застрял на задаче. Спроси про первый шаг, ответ пока не давай." },
+  { id: "exam", label: "К экзамену", prompt: "Подготовь меня к короткой проверке по теме, которую я назову." },
+  { id: "quiz", label: "Собрать тест", prompt: "Собери короткий тест из 5 вопросов по теме, которую я назову." },
+];
+
+function clock(iso: string) {
+  try {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
+}
+
+function subjectTag(text: string) {
+  return text;
+}
 
 function TutorInner() {
   const {
@@ -25,13 +50,16 @@ function TutorInner() {
     addConversation,
     setActiveConversation,
     appendMessage,
+    patchMessage,
+    deleteMessage,
     renameConversation,
     pinConversation,
     deleteConversation,
-    updateUser,
+    setConversationMode,
     addXp,
     demoMode,
     setDemoMode,
+    unlockAchievement,
   } = useApp();
   const loc = user?.language ?? "ru";
   const params = useSearchParams();
@@ -40,15 +68,59 @@ function TutorInner() {
   const [search, setSearch] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<"off" | "listen" | "understand">("off");
+  const [voiceErr, setVoiceErr] = useState("");
+  const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [mobileChats, setMobileChats] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [copied, setCopied] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
+  const stopRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const recRef = useRef<SpeechRecognition | null>(null);
+  const greeted = useRef(false);
+  const who = user?.email?.toLowerCase() === DEMO_EMAIL ? "" : firstName(user?.name);
+
+  useEffect(() => {
+    if (!user || greeted.current) return;
+    if (user.email.toLowerCase() === DEMO_EMAIL) return;
+    if (conversations.length > 0) return;
+    if (sessionStorage.getItem("ssai-seed")) return;
+    const greetKey = `ssai-greeted-${user.id}`;
+    if (sessionStorage.getItem(greetKey)) return;
+    greeted.current = true;
+    sessionStorage.setItem(greetKey, "1");
+    const id = addConversation({ title: who ? `Диалог · ${who}` : t(loc, "tutor.new.chat") });
+    appendMessage(id, {
+      role: "assistant",
+      content: who
+        ? `Привет, ${who}! Что хочешь разобрать сегодня?`
+        : "Привет! Что хочешь разобрать сегодня?",
+    });
+  }, [user, conversations.length, addConversation, appendMessage, who, loc]);
 
   useEffect(() => {
     const c = params.get("c");
-    if (c) setActiveConversation(c);
     const seed = sessionStorage.getItem("ssai-seed");
     if (seed) {
       sessionStorage.removeItem("ssai-seed");
-      setTimeout(() => send(seed), 200);
+      const id = c || addConversation({ title: seed.slice(0, 42) });
+      if (c) setActiveConversation(c);
+      setTimeout(() => send(seed, id), 200);
+    } else if (c) {
+      setActiveConversation(c);
+    } else if (params.get("topic")) {
+      const topicId = params.get("topic")!;
+      const id = addConversation({ title: topicId, topicId });
+      setTimeout(() => send("Объясни эту тему простыми словами, коротко и по делу.", id), 200);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -59,50 +131,129 @@ function TutorInner() {
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conv?.messages.length, busy]);
+    endRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [conv?.messages.length, busy, streamId]);
 
-  async function send(text: string) {
+  function grow() {
+    const el = areaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(160, el.scrollHeight)}px`;
+  }
+
+  function readFile(file: File) {
+    if (file.size > 4 * 1024 * 1024) {
+      setVoiceErr("Файл больше 4 МБ. Сожмите снимок и загрузите снова.");
+      return;
+    }
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => setImage(String(reader.result));
+      reader.readAsDataURL(file);
+      setFileName(file.name);
+      return;
+    }
+    setFileName(file.name);
+    setImage(null);
+  }
+
+  async function reveal(id: string, mid: string, full: string, meta?: (typeof conv)["messages"][0]["meta"]) {
+    stopRef.current = false;
+    const skip =
+      typeof window !== "undefined" &&
+      (window.matchMedia("(max-width: 767px)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (skip) {
+      patchMessage(id, mid, { content: full, meta: { ...meta, status: "sent" } });
+      return;
+    }
+    setStreamId(mid);
+    const step = Math.max(8, Math.ceil(full.length / 24));
+    for (let i = 0; i < full.length; i += step) {
+      if (stopRef.current) break;
+      patchMessage(id, mid, { content: full.slice(0, i + step), meta: { ...meta, status: "sent" } });
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    patchMessage(id, mid, {
+      content: stopRef.current ? full.slice(0, Math.max(24, full.length / 2)) + "…" : full,
+      meta: { ...meta, status: "sent" },
+    });
+    setStreamId(null);
+  }
+
+  async function send(text: string, forceId?: string, extraImage?: string) {
     const content = text.trim();
-    if (!content) return;
-    let id = conv?.id;
-    if (!id) id = addConversation({ title: content.slice(0, 42) });
-    appendMessage(id, { role: "user", content });
-    setInput("");
-    setBusy(true);
-    const history = [
-      ...(conv?.messages ?? []).map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content },
-    ];
-    const res = await askAi({
-      messages: history,
-      profile: user,
-      style: user?.explainStyle ?? "student",
-      lessonLanguage: user?.lessonLanguage ?? "ru",
-      hintOnly: user?.hintOnly ?? false,
-      fallbackText: content,
-    });
-    if (res.demo) setDemoMode(true);
-    else setDemoMode(false);
-
-    const last = conv?.messages.filter((m) => m.role === "assistant").slice(-1)[0];
-    const topicId = typeof last?.meta?.topic === "string" ? last.meta.topic : undefined;
-    let extra = "";
-    if (last && conv && conv.messages.filter((m) => m.role === "user").length > 1) {
-      const ev = evaluateStudentAnswer(content, topicId);
-      extra = `\n\n${ev.ok ? "✅ " : "⚠️ "}${ev.explanation}`;
-      if (ev.ok) addXp(XP_REWARDS.task, "Решена задача");
+    const pic = extraImage ?? image;
+    if (!content && !pic && !fileName) return;
+    let id = forceId ?? conv?.id;
+    if (!id) id = addConversation({ title: titleFromQuestion(content || fileName || "Фото"), mode: conv?.mode ?? "chat" });
+    if (editId) {
+      deleteMessage(id, editId);
+      setEditId(null);
     }
-
     appendMessage(id, {
-      role: "assistant",
-      content: res.content + extra,
-      meta: res.meta,
+      role: "user",
+      content: content || (pic ? "Разбери это фото по шагам, без готового ответа." : `Файл: ${fileName}`),
+      meta: { image: pic ?? undefined, fileName: fileName || undefined, status: "sent" },
     });
-    if (res.error) {
-      appendMessage(id, { role: "system", content: res.error });
+    setInput("");
+    setImage(null);
+    setFileName("");
+    if (areaRef.current) areaRef.current.style.height = "auto";
+    setBusy(true);
+    setVoiceErr("");
+    const mid = appendMessage(id, { role: "assistant", content: "", meta: { status: "thinking" } });
+    const tagged = subjectTag(content || "Разбери вложение");
+    const history = [
+      ...(conv?.messages ?? []).map((m) => ({
+        role: m.role,
+        content: m.role === "user" ? subjectTag(m.content) : m.content,
+      })),
+      { role: "user", content: tagged },
+    ];
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    try {
+      const res = await askSchoolAi({
+        messages: history,
+        profile: user,
+        style: user?.explainStyle === "teacher" || user?.explainStyle === "detailed" ? user.explainStyle : "simple",
+        lessonLanguage: user?.lessonLanguage ?? "ru",
+        hintOnly: false,
+        image: pic ?? undefined,
+        fallbackText: content || "фото задачи",
+        mode: conv?.mode ?? "chat",
+        signal: abortRef.current.signal,
+      });
+      if (res.demo) setDemoMode(true);
+      else setDemoMode(false);
+      if (res.error === "stopped" || stopRef.current) {
+        patchMessage(id, mid, { content: t(loc, "tutor.stop"), meta: { status: "sent" } });
+        setBusy(false);
+        setStreamId(null);
+        return;
+      }
+      const last = conv?.messages.filter((m) => m.role === "assistant").slice(-1)[0];
+      let extra = "";
+      if (last?.meta?.quizPrompt) {
+        const topicId = typeof last.meta.topic === "string" ? last.meta.topic : undefined;
+        const ev = evaluateStudentAnswer(content, topicId);
+        if (ev) {
+          extra = `\n\n${ev.ok ? "✅ " : "⚠️ "}${ev.explanation}`;
+          if (ev.ok) {
+            addXp(XP_REWARDS.task, "Решена задача");
+            unlockAchievement("hundred-tasks");
+          }
+        }
+      }
+      if (res.error) {
+        patchMessage(id, mid, { content: res.content || t(loc, "tutor.fail"), meta: { ...res.meta, status: "error", error: res.error } });
+      } else {
+        await reveal(id, mid, (res.content || t(loc, "tutor.fail")) + extra, res.meta);
+      }
+      unlockAchievement("first-topic");
+    } catch {
+      patchMessage(id, mid, { content: t(loc, "tutor.fail"), meta: { status: "error" } });
     }
-    addXp(4, "");
     setBusy(false);
   }
 
@@ -112,183 +263,374 @@ function TutorInner() {
   }
 
   function voiceIn() {
-    const SR = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition
-      || (window as unknown as { SpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
+    const SR =
+      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
     if (!SR) {
-      setInput((v) => v || "Объясни мне теорему Пифагора.");
+      setVoiceErr(t(loc, "tutor.voice.off"));
+      setListening(false);
+      return;
+    }
+    if (listening && recRef.current) {
+      recRef.current.stop();
+      setListening(false);
+      setVoicePhase("off");
       return;
     }
     const rec = new SR();
-    rec.lang = user?.language === "en" ? "en-US" : "ru-RU";
+    rec.lang = user?.language === "en" ? "en-US" : user?.language === "tg" ? "tg-TG" : "ru-RU";
     rec.onresult = (ev: SpeechRecognitionEvent) => {
       const said = ev.results[0][0].transcript;
-      setInput(said);
+      const merged = input ? `${input} ${said}` : said;
+      setInput(merged);
+      setListening(false);
+      setVoicePhase("understand");
+      window.setTimeout(() => {
+        setVoicePhase("off");
+        send(merged);
+      }, 450);
+    };
+    rec.onerror = () => {
+      setVoiceErr("Не удалось распознать голос. Разреши микрофон или напиши текстом.");
+      setListening(false);
+      setVoicePhase("off");
+    };
+    rec.onend = () => {
       setListening(false);
     };
-    rec.onend = () => setListening(false);
+    recRef.current = rec;
     setListening(true);
+    setVoicePhase("listen");
+    setVoiceErr("");
     rec.start();
   }
 
-  function speak(text: string) {
-    if (!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(text.slice(0, 400));
-    u.lang = user?.lessonLanguage === "en" ? "en-US" : "ru-RU";
+  async function copyText(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      setTimeout(() => setCopied(""), 1200);
+    } catch {
+      setCopied("");
+    }
+  }
+
+  function speakOut(text: string) {
+    if (!("speechSynthesis" in window)) {
+      setVoiceErr("Голос ответа в этом браузере недоступен.");
+      return;
+    }
+    if (speaking && !paused) {
+      window.speechSynthesis.pause();
+      setPaused(true);
+      return;
+    }
+    if (speaking && paused) {
+      window.speechSynthesis.resume();
+      setPaused(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(stripFakeNames(text, who).replace(/\s+/g, " ").slice(0, 500));
+    u.lang = user?.language === "en" ? "en-US" : "ru-RU";
+    u.onend = () => {
+      setSpeaking(false);
+      setPaused(false);
+    };
+    u.onerror = () => {
+      setSpeaking(false);
+      setPaused(false);
+    };
+    setSpeaking(true);
+    setPaused(false);
     window.speechSynthesis.speak(u);
   }
 
-  const understanding = conv?.messages.map((m) => m.meta?.understanding).filter(Boolean).slice(-1)[0] ?? 72;
+  function stopVoice() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeaking(false);
+    setPaused(false);
+  }
+
+  const msgs = conv?.messages ?? [];
+  const empty = msgs.length === 0;
+  const onlyWelcome = msgs.length > 0 && msgs.every((m) => m.role === "assistant");
+  const botMood: BotMood = listening ? "listen" : voicePhase === "understand" || busy ? "think" : speaking ? "speak" : "idle";
+  const status = listening
+    ? "Слушаю"
+    : voicePhase === "understand"
+      ? "Разбираю речь…"
+      : busy
+        ? "Думаю"
+        : speaking
+          ? paused
+            ? "Пауза"
+            : "Говорю"
+          : "На связи";
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] min-h-[560px] rounded-[1.8rem] border border-white/12 bg-[#10131c] overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,.45)]">
-      <aside className="hidden md:flex w-64 flex-col border-e border-[var(--line)]">
-        <div className="p-3 flex gap-2">
-          <Button className="flex-1" onClick={() => addConversation()}>
-            <Plus size={14} /> {t(loc, "tutor.new")}
+    <div className="chat-studio gpt-chat with-bot">
+      <aside className={`chat-rail chat-rail-list flex-col ${mobileChats ? "open" : ""}`}>
+        <div className="p-3 sm:p-4">
+          <Button className="w-full" onClick={() => { addConversation(); setMobileChats(false); }}>
+            <Plus size={14} /> Новый чат
           </Button>
+          <input
+            className="mt-3 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm text-[#121826]"
+            placeholder="Найти чат"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-        <div className="px-3 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--line)] px-2">
-            <Search size={14} className="text-ink-400" />
-            <input className="py-2 text-sm flex-1 bg-transparent outline-none" placeholder={t(loc, "tutor.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
+        <div className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-3">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-6 text-sm text-[var(--muted)]">Пока пусто. Напиши первый вопрос.</p>
+          ) : (
+            groupChatsByDay(filtered).map((bucket) => (
+              <div key={bucket.label} className="mb-2">
+                <p className="px-3 py-1 text-[11px] font-semibold text-[var(--muted)]">{bucket.label}</p>
+                {bucket.items.map((c) => (
+                  <div key={c.id} className={`group rounded-xl px-3 py-2 text-sm cursor-pointer ${c.id === conv?.id ? "bg-white shadow-sm" : "hover:bg-white/70"}`}>
+                    <button type="button" className="block w-full text-start truncate font-medium text-[#121826]" onClick={() => { setActiveConversation(c.id); setMobileChats(false); }}>
+                      {c.title}
+                    </button>
+                    <div className="flex gap-2 mt-1 text-[11px] text-[var(--muted)]">
+                      <button type="button" onClick={() => setRenameId(c.id)}>Имя</button>
+                      <button type="button" onClick={() => pinConversation(c.id)}>Закрепить</button>
+                      <button type="button" onClick={() => setConfirmDelete(c.id)}>Удалить</button>
+                    </div>
+                    {renameId === c.id && (
+                      <input
+                        autoFocus
+                        className="mt-1 w-full bg-white border border-[var(--line)] rounded-lg px-2 py-1 text-sm text-[#121826]"
+                        defaultValue={c.title}
+                        onBlur={(e) => {
+                          renameConversation(c.id, e.target.value);
+                          setRenameId(null);
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
-          {filtered.map((c) => (
-            <div key={c.id} className={`group rounded-xl px-2 py-2 text-sm cursor-pointer ${c.id === conv?.id ? "bg-white/10" : "hover:bg-white/5"}`}>
-              <div className="flex items-center gap-1" onClick={() => setActiveConversation(c.id)}>
-                {c.pinned && <Pin size={12} />}
-                {renameId === c.id ? (
-                  <input
-                    autoFocus
-                    className="flex-1 bg-transparent outline-none"
-                    defaultValue={c.title}
-                    onBlur={(e) => {
-                      renameConversation(c.id, e.target.value);
-                      setRenameId(null);
-                    }}
-                  />
-                ) : (
-                  <span className="flex-1 truncate">{c.title}</span>
-                )}
-              </div>
-              <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 text-xs text-ink-500">
-                <button onClick={() => setRenameId(c.id)}>{t(loc, "tutor.rename")}</button>
-                <button onClick={() => pinConversation(c.id)}>{t(loc, "tutor.pin")}</button>
-                <button onClick={() => deleteConversation(c.id)}>{t(loc, "tutor.delete")}</button>
-              </div>
-            </div>
-          ))}
+        <div className="chat-rail-foot">
+          <Link href="/dashboard">Главная</Link>
+          <Link href="/subjects">Курсы</Link>
+          <Link href="/practice">Практика</Link>
+          <Link href="/progress">Прогресс</Link>
         </div>
       </aside>
 
-      <section className="flex-1 min-w-0 flex flex-col">
-        <div className="px-4 py-3 border-b border-[var(--line)] flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{conv?.title ?? t(loc, "nav.tutor")}</span>
-          {demoMode && <span className="text-[10px] uppercase tracking-wider text-amber-700">{t(loc, "demo")}</span>}
-          <div className="flex-1" />
-          <label className="text-xs flex items-center gap-1">
-            <input type="checkbox" checked={!!user?.hintOnly} onChange={(e) => updateUser({ hintOnly: e.target.checked })} />
-            {t(loc, "no.answer")}
-          </label>
-          <LanguageSwitcher lesson />
+      {mobileChats && <button type="button" className="chat-dim chat-mobile-only" aria-label="Закрыть" onClick={() => setMobileChats(false)} />}
+
+      <section className="chat-stage">
+        <div className="gpt-top">
+          <button type="button" className="chat-mobile-only gpt-top-btn" onClick={() => setMobileChats(true)}>
+            Чаты
+          </button>
+          <TutorBot size="sm" mood={botMood} look={false} />
+          <div className="gpt-head-copy">
+            <p className="gpt-top-title">AI-репетитор</p>
+            <p className="gpt-top-live">
+              <span className={`live-dot ${listening ? "listen" : busy ? "think" : ""}`} aria-hidden />
+              {status}
+            </p>
+          </div>
+          <button type="button" className="gpt-top-btn" onClick={() => addConversation({ mode: conv?.mode ?? "chat" })} aria-label="Новый чат">
+            +
+          </button>
         </div>
-        <div className="px-4 py-2 flex gap-2 overflow-x-auto text-xs border-b border-[var(--line)]">
-          {STYLES.map((s) => (
+        <div className="gpt-modes" role="tablist" aria-label="Режим ИИ">
+          {AI_MODES.map((m) => (
             <button
-              key={s}
-              onClick={() => updateUser({ explainStyle: s })}
-              className={`whitespace-nowrap rounded-full px-3 py-1 border ${user?.explainStyle === s ? "border-gold-400 bg-gold-400/10 text-gold-400" : "border-white/15 text-white/60"}`}
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={(conv?.mode ?? "chat") === m.id}
+              className={(conv?.mode ?? "chat") === m.id ? "on" : ""}
+              title={m.hint}
+              onClick={() => {
+                if (!conv) addConversation({ mode: m.id as AiMode });
+                else setConversationMode(conv.id, m.id as AiMode);
+              }}
             >
-              {t(loc, `style.${s}`)}
+              {m.label}
             </button>
           ))}
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!(conv?.messages ?? []).length && (
-            <div className="h-full min-h-[220px] grid place-items-center text-center px-6">
-              <div>
-                <p className="font-serif italic text-3xl">{user?.name}, я уже знаю, как к тебе обращаться.</p>
-                <p className="text-sm text-ink-500 mt-3 max-w-md mx-auto">
-                  Задай вопрос — объясню с твоего уровня, по шагам, и назову тебя по имени из аккаунта.
-                </p>
+
+        <div className="flex-1 min-h-0 overflow-y-auto gpt-feed">
+          {(empty || onlyWelcome) && (
+            <div className="gpt-hero">
+              <TutorBot size="md" mood={botMood} />
+              <h1>{who ? `Привет, ${who}. Что разберём?` : "Привет! Что хочешь разобрать сегодня?"}</h1>
+              <p>Напиши вопрос, отправь фото или нажми на микрофон.</p>
+              <div className="gpt-quick">
+                {QUICK.map((q) => (
+                  <button key={q.id} type="button" onClick={() => send(q.prompt)}>
+                    {q.label}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-          {(conv?.messages ?? []).map((m) => (
-            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed ${
-                  m.role === "user"
-                    ? "bg-white text-ink-950 rounded-tr-sm"
-                    : m.role === "system"
-                    ? "bg-amber-500/15 text-amber-200"
-                    : "bg-[#151826] border border-white/10 rounded-tl-sm"
-                }`}
-              >
-                {m.content}
-                {m.meta?.formula && (
-                  <div className="mt-3 bg-white/70 dark:bg-ink-900/50 rounded-xl p-3">
-                    <Formula latex={m.meta.formula} display />
+
+          {!(empty || onlyWelcome) && msgs.map((m) => (
+            <div key={m.id} className={`gpt-row ${m.role === "user" ? "me" : "bot"}`}>
+              {m.role !== "user" && (
+                <span className="gpt-ava">
+                  <TutorBot size="sm" look={false} mood={m.meta?.status === "thinking" ? "think" : m.meta?.status === "error" ? "error" : "idle"} />
+                </span>
+              )}
+              <div className="gpt-col">
+                <div className={`gpt-bubble ${m.role === "user" ? "me" : "bot"}`}>
+                  {m.meta?.status === "thinking" && !m.content ? (
+                    <span className="inline-flex items-center gap-2 text-[var(--muted)]">
+                      Репетитор думает
+                      <span className="ai-think" aria-hidden />
+                    </span>
+                  ) : (
+                    <ChatText text={stripFakeNames(m.content, who)} />
+                  )}
+                  {m.meta?.image && <img src={m.meta.image} alt="" className="mt-3 max-h-48 rounded-xl" />}
+                  {m.meta?.formula && (
+                    <div className="mt-3 rounded-xl bg-white p-3">
+                      <Formula latex={m.meta.formula} display />
+                    </div>
+                  )}
+                </div>
+                {m.role === "assistant" && m.content && (
+                  <div className="gpt-meta">
+                    <button type="button" onClick={() => speakOut(m.content)} aria-label={speaking && !paused ? "Пауза" : "Озвучить"}>
+                      {speaking && !paused ? <Pause size={14} /> : <Play size={14} />} {speaking && !paused ? "Пауза" : "Голос"}
+                    </button>
+                    {speaking && (
+                      <button type="button" onClick={stopVoice} aria-label="Стоп">Стоп</button>
+                    )}
+                    <button type="button" onClick={() => copyText(m.id, stripFakeNames(m.content, who))}>{copied === m.id ? "Скопировано" : "Копировать"}</button>
+                    <button type="button" onClick={() => send("Объясни ещё проще и короче")}>Ещё проще</button>
+                    <button type="button" onClick={() => send("Объясни подробнее, с ещё одним примером")}>Подробнее</button>
+                    <button type="button" onClick={() => send("Дай одно упражнение по этой теме")}>Практика</button>
+                    <button type="button" onClick={() => send("Переведи объяснение на английский, коротко")}>Перевод</button>
+                    <button type="button" onClick={() => send(conv?.messages.filter((x) => x.role === "user").slice(-1)[0]?.content || input)}>Ещё раз</button>
+                    <button type="button" aria-label="Хорошо" onClick={() => patchMessage(conv!.id, m.id, { meta: { feedback: "up" } })}>{m.meta?.feedback === "up" ? "✓" : "Да"}</button>
+                    <button type="button" aria-label="Плохо" onClick={() => patchMessage(conv!.id, m.id, { meta: { feedback: "down" } })}>{m.meta?.feedback === "down" ? "✕" : "Нет"}</button>
+                    {m.meta?.status === "error" && (
+                      <button type="button" onClick={() => send(conv?.messages.filter((x) => x.role === "user").slice(-1)[0]?.content || input)}>Повторить</button>
+                    )}
+                    <span className="time">{clock(m.createdAt)}</span>
                   </div>
                 )}
-                {m.role === "assistant" && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button className="text-xs text-gold-400" onClick={() => speak(m.content)}>
-                      <Volume2 size={12} className="inline" /> {t(loc, "pronounce")}
-                    </button>
-                    <button className="text-xs" onClick={() => send("Я не понял")}>
-                      {t(loc, "dont.understand")}
-                    </button>
-                    <button className="text-xs" onClick={() => send("Объясни иначе")}>
-                      {t(loc, "explain.again")}
-                    </button>
-                    {m.meta?.quizPrompt && (
-                      <button className="text-xs" onClick={() => (window.location.href = "/tests?topic=quadratic")}>
-                        {t(loc, "test.check")}
-                      </button>
-                    )}
+                {m.role === "user" && (
+                  <div className="gpt-meta right">
+                    <button type="button" onClick={() => { setInput(m.content); setEditId(m.id); areaRef.current?.focus(); }}>Изменить</button>
+                    <button type="button" onClick={() => deleteMessage(conv!.id, m.id)}>Удалить</button>
+                    <span className="time">{clock(m.createdAt)}</span>
                   </div>
                 )}
               </div>
             </div>
           ))}
-          {busy && (
-            <div className="text-sm text-ink-500 flex gap-1">
-              <span className="animate-pulseSoft">●</span>
-              <span className="animate-pulseSoft [animation-delay:150ms]">●</span>
-              <span className="animate-pulseSoft [animation-delay:300ms]">●</span>
-            </div>
-          )}
           <div ref={endRef} />
         </div>
-        <form onSubmit={onSubmit} className="p-3 border-t border-[var(--line)] flex gap-2">
-          <button type="button" className={`rounded-xl px-3 ${listening ? "text-red-500" : ""}`} onClick={voiceIn}>
-            <Mic size={18} />
-          </button>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={t(loc, "tutor.placeholder")}
-            className="flex-1 rounded-xl border border-[var(--line)] px-3 py-2 bg-transparent"
-          />
-          <Button type="submit" disabled={busy}>
-            <Send size={16} />
-          </Button>
+
+        <form
+          onSubmit={onSubmit}
+          className="composer-box gpt-composer"
+        >
+          {image && (
+            <div className="gpt-attach">
+              <img src={image} alt="Вложение" />
+              <button type="button" onClick={() => { setImage(null); setFileName(""); }} aria-label="Убрать фото">
+                <X size={14} /> Убрать
+              </button>
+            </div>
+          )}
+          {fileName && !image && (
+            <p className="px-2 text-xs text-[var(--muted)] flex items-center justify-between gap-2">
+              {fileName}
+              <button type="button" onClick={() => setFileName("")}>Убрать</button>
+            </p>
+          )}
+          {demoMode && <p className="px-2 pb-1 text-[11px] text-amber-800">Сейчас без сети — ответы из школьной базы.</p>}
+          <div className="flex items-end gap-1">
+            <button type="button" className="icon-chip shrink-0" onClick={() => fileRef.current?.click()} aria-label="Вложение">
+              <Paperclip size={16} />
+            </button>
+            <button type="button" className="icon-chip shrink-0" onClick={() => camRef.current?.click()} aria-label="Фото задачи">
+              <Camera size={16} />
+            </button>
+            <textarea
+              ref={areaRef}
+              value={input}
+              rows={1}
+              onChange={(e) => { setInput(e.target.value); grow(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send(input);
+                }
+              }}
+              placeholder="Напиши вопрос репетитору…"
+              aria-label="Сообщение"
+            />
+            <button
+              type="button"
+              className={`mic-orb shrink-0 ${listening ? "listen" : ""} ${voicePhase === "understand" ? "wait" : ""}`}
+              onClick={voiceIn}
+              aria-label={listening ? "Остановить микрофон" : "Говорить"}
+            >
+              {listening ? <span className="wave"><b /><b /><b /><b /></span> : <Mic size={16} />}
+            </button>
+            {busy ? (
+              <button type="button" className="btn-secondary !px-3 shrink-0" onClick={() => { stopRef.current = true; abortRef.current?.abort(); setBusy(false); }} aria-label="Стоп">
+                <Square size={14} />
+              </button>
+            ) : (
+              <Button type="submit" className="!px-3 sm:!px-5 shrink-0" disabled={!input.trim() && !image && !fileName} aria-label="Отправить">
+                <Send size={16} />
+              </Button>
+            )}
+          </div>
+          {listening && (
+            <p className="px-2 pt-1 text-xs text-[#2b90d9] flex items-center gap-2">
+              Слушаю… <VoiceWave active={listening} />
+            </p>
+          )}
+          {voicePhase === "understand" && (
+            <p className="px-2 pt-1 text-xs text-[#2b90d9]">Понимаю…</p>
+          )}
+          {voiceErr && (
+            <p className="px-2 pt-1 text-xs text-amber-800">
+              {voiceErr}{" "}
+              <button type="button" className="underline" onClick={voiceIn}>Ещё раз</button>
+            </p>
+          )}
+          <input ref={fileRef} type="file" accept="image/*,.pdf,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
         </form>
       </section>
 
-      <aside className="hidden xl:block w-64 border-s border-[var(--line)] p-4">
-        <div className="text-xs uppercase tracking-wider text-ink-400">{t(loc, "tutor.progress")}</div>
-        <div className="mt-3 text-sm">
-          {t(loc, "tutor.topic")}
-          <div className="font-medium mt-1">{conv?.topicId ? t(loc, `topic.${conv.topicId}`) : "Квадратные уравнения"}</div>
-        </div>
-        <div className="mt-4 text-sm">{t(loc, "tutor.understanding")}</div>
-        <div className="text-2xl font-medium mt-1">{understanding}%</div>
-        <ProgressBar value={Number(understanding)} className="mt-2" />
-        <p className="text-xs text-ink-500 mt-4">Слабые темы появляются в рекомендациях чаще.</p>
+      <aside className="tutor-side" aria-hidden>
+        <TutorBot size="lg" mood={botMood} />
+        <p>{status}</p>
       </aside>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Удалить диалог?"
+        text="История этого разговора пропадёт с этого устройства."
+        confirmLabel="Удалить"
+        danger
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) deleteConversation(confirmDelete);
+          setConfirmDelete(null);
+        }}
+      />
     </div>
   );
 }

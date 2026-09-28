@@ -9,7 +9,7 @@ export function LanguageSwitcher({ lesson = false }: { lesson?: boolean }) {
   const current = lesson ? user?.lessonLanguage : user?.language;
   return (
     <select
-      aria-label={lesson ? "Lesson language" : "UI language"}
+      aria-label={lesson ? "Язык урока" : "Язык интерфейса"}
       className="rounded-full border border-[var(--line)] bg-[var(--bg-elev)] px-3 py-1.5 text-sm"
       value={current ?? "ru"}
       onChange={(e) => (lesson ? setLessonLanguage : setLanguage)(e.target.value as Locale)}

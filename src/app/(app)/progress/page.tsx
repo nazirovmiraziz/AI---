@@ -1,71 +1,68 @@
 "use client";
 
+import Link from "next/link";
 import { useApp } from "@/lib/store";
+import { accuracy, tasksDone, weekActivity } from "@/lib/cabinet";
+import { SUBJECTS } from "@/lib/subjects";
 import { t } from "@/lib/i18n";
 import { ProgressBar } from "@/components/ProgressBar";
-import { levelFromXp } from "@/lib/demo-data";
-import { SUBJECTS } from "@/lib/subjects";
-
-function MiniBars({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1);
-  return (
-    <div className="flex items-end gap-2 h-32">
-      {data.map((v, i) => (
-        <div key={i} className="flex-1 bg-brand-100 dark:bg-brand-900 rounded-t-lg relative" style={{ height: `${(v / max) * 100}%` }}>
-          <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-ink-400">{v}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+import { StreakWeek } from "@/components/WeekChart";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function ProgressPage() {
   const { user } = useApp();
   const loc = user?.language ?? "ru";
-  const lv = levelFromXp(user?.xp ?? 0);
-  const goalPct = Math.min(100, Math.round(((user?.xp ?? 0) / 8000) * 100));
+  const hist = user?.testHistory ?? [];
+  const week = weekActivity(user?.activityDays);
+  const weekDone = week.filter((d) => d.done).length;
+  const monthTests = hist.filter((r) => Date.now() - +new Date(r.date) < 30 * 86400000);
+  const hours = Math.round(((user?.studyMinutes ?? 0) / 60) * 10) / 10;
+
   return (
-    <div className="space-y-6 pb-16">
-      <h1 className="font-serif text-4xl">{t(loc, "nav.progress")}</h1>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-6">
-          <h2 className="font-medium">📈 {t(loc, "chart.week")}</h2>
-          <div className="mt-6">
-            <MiniBars data={user?.weeklyMinutes ?? [0, 0, 0, 0, 0, 0, 0]} />
-          </div>
-        </div>
-        <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-6">
-          <h2 className="font-medium">📊 {t(loc, "chart.time")}</h2>
-          <p className="text-4xl font-serif mt-4">{user?.studyMinutes ?? 0}</p>
-          <p className="text-sm text-ink-500">{t(loc, "minutes")}</p>
-        </div>
-        <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-6">
-          <h2 className="font-medium">📚 {t(loc, "chart.topics")}</h2>
-          <p className="text-4xl font-serif mt-4">{user?.learnedTopics.length ?? 0}</p>
-          <p className="text-sm text-ink-500">{t(loc, "profile.topics")}</p>
-        </div>
-        <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-6">
-          <h2 className="font-medium">🎯 {t(loc, "chart.goals")}</h2>
-          <p className="mt-2">{t(loc, `goal.${user?.goal ?? "university"}`)}</p>
-          <ProgressBar value={goalPct} className="mt-4" />
-          <p className="text-sm mt-2">{goalPct}%</p>
-        </div>
+    <div className="space-y-6 pb-16 max-w-3xl">
+      <div>
+        <p className="gold-kicker">Прогресс</p>
+        <h1 className="mt-2 text-3xl font-semibold">Что уже сделано</h1>
       </div>
-      <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-6">
-        <h2 className="font-medium mb-4">{t(loc, "level.title")}</h2>
-        {SUBJECTS.map((s) => (
-          <div key={s.id} className="mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="stat-tile"><div className="k">Сегодня</div><div className="v">{week.find((d) => d.today)?.done ? "есть занятие" : "ещё нет"}</div></div>
+        <div className="stat-tile"><div className="k">Неделя</div><div className="v">{weekDone}/7</div></div>
+        <div className="stat-tile"><div className="k">Месяц тестов</div><div className="v">{monthTests.length}</div></div>
+        <div className="stat-tile"><div className="k">Часы</div><div className="v">{hours}</div></div>
+      </div>
+      <section className="panel-card p-5 space-y-3">
+        <h2 className="font-semibold">Серия</h2>
+        <StreakWeek days={user?.activityDays} locale={loc} />
+        <p className="text-sm text-[var(--muted)]">🔥 {user?.streak ?? 0} дней · задач {tasksDone(user)} · точность {accuracy(user)}%</p>
+      </section>
+      <section className="panel-card p-5 space-y-3">
+        <h2 className="font-semibold">Предметы</h2>
+        {SUBJECTS.slice(0, 8).map((s) => (
+          <div key={s.id}>
             <div className="flex justify-between text-sm">
               <span>{t(loc, `subject.${s.id}`)}</span>
               <span>{user?.subjectLevels[s.id] ?? 0}%</span>
             </div>
-            <ProgressBar value={user?.subjectLevels[s.id] ?? 0} />
+            <ProgressBar value={user?.subjectLevels[s.id] ?? 0} className="mt-1" />
           </div>
         ))}
-        <p className="text-sm text-ink-500 mt-4">
-          {user?.xp.toLocaleString("ru-RU")} XP · {Math.round(lv.progress)}% · {lv.next ? `${t(loc, "level.to")} «${t(loc, lv.next.nameKey)}» ${t(loc, "level.left")} ${lv.remaining} XP` : t(loc, "level.master")}
-        </p>
-      </div>
+      </section>
+      <section className="panel-card p-5">
+        <h2 className="font-semibold mb-3">Последние проверки</h2>
+        {hist.length === 0 ? (
+          <EmptyState title="Проверок нет" text="Пройди практику — результат появится здесь." action="К практике" href="/practice" />
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {hist.slice(0, 8).map((r) => (
+              <li key={r.id} className="flex justify-between gap-3 border-b border-[var(--line)] pb-2">
+                <span className="truncate">{r.title}</span>
+                <span>{r.score}/{r.total}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <Link href="/learn/progress" className="text-sm text-[#163068]">Прогресс по языкам →</Link>
     </div>
   );
 }

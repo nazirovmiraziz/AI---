@@ -1,191 +1,157 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Camera, Brain, FileQuestion, GraduationCap, MessageCircle, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useApp } from "@/lib/store";
+import { firstName, dayGreeting, accuracy, tasksDone } from "@/lib/cabinet";
+import { DEMO_EMAIL, levelFromXp, XP_REWARDS } from "@/lib/demo-data";
+import { SUBJECTS, getTopic } from "@/lib/subjects";
 import { t } from "@/lib/i18n";
-import { SUBJECTS } from "@/lib/subjects";
-import { Button } from "@/components/Button";
 import { ProgressBar } from "@/components/ProgressBar";
-import { levelFromXp } from "@/lib/demo-data";
+import { StreakWeek } from "@/components/WeekChart";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function DashboardPage() {
-  const { user, addConversation, demoMode } = useApp();
-  const router = useRouter();
-  const [q, setQ] = useState("");
+  const { user, conversations, displayName } = useApp();
   const loc = user?.language ?? "ru";
+  const who = user?.email?.toLowerCase() === DEMO_EMAIL ? "" : displayName || firstName(user?.name);
+  const [hour, setHour] = useState(12);
+  useEffect(() => { setHour(new Date().getHours()); }, []);
   const lv = levelFromXp(user?.xp ?? 0);
-
-  const rec = useMemo(
-    () => ({
-      title: t(loc, "topic.discriminant"),
-      minutes: 12,
-      why: t(loc, "welcome.why"),
-    }),
-    [loc]
-  );
-
-  function goTutor(prompt?: string) {
-    const id = addConversation({ title: prompt?.slice(0, 40) || "Новый диалог" });
-    if (prompt) sessionStorage.setItem("ssai-seed", prompt);
-    router.push(`/tutor?c=${id}`);
-  }
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!q.trim()) return;
-    goTutor(q.trim());
-  }
-
-  const quick = [
-    { icon: Camera, key: "quick.photo", href: "/photo" },
-    { icon: Brain, key: "quick.check", href: "/tests" },
-    { icon: FileQuestion, key: "quick.test", href: "/tests?create=1" },
-    { icon: GraduationCap, key: "quick.exam", href: "/exam" },
-    { icon: MessageCircle, key: "quick.ask", action: () => goTutor() },
-  ];
+  const dailyGoal = user?.dailyGoalMin ?? 20;
+  const todayMin = user?.weeklyMinutes?.[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1] ?? 0;
+  const goalPct = Math.min(100, Math.round((todayMin / Math.max(1, dailyGoal)) * 100));
+  const favFirst = user?.favoriteSubjects?.[0]
+    ? SUBJECTS.find((s) => s.id === user.favoriteSubjects[0])?.topics[0]?.id
+    : undefined;
+  const continueTopic = user?.continueLesson?.topicId || user?.weakTopics?.[0] || favFirst || "linear-eq";
+  const topic = getTopic(continueTopic);
+  const recent = [...conversations].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)).slice(0, 4);
+  const favIds = user?.favoriteSubjects?.length ? user.favoriteSubjects : [];
+  const fav = (favIds.length ? favIds : []).map((id) => SUBJECTS.find((s) => s.id === id)).filter(Boolean);
+  const recs = [
+    user?.weakTopics?.[0] && { href: `/review`, title: `Повтори: ${t(loc, `topic.${user.weakTopics[0]}`)}`, why: "Тема в слабых." },
+    user?.continueLesson && { href: `/lesson/${user.continueLesson.topicId}`, title: `Продолжи: ${t(loc, `topic.${user.continueLesson.topicId}`)}`, why: "Ты остановился здесь." },
+    { href: `/lesson/${continueTopic}`, title: "Новый шаг по текущей теме", why: "Дальше по плану." },
+  ].filter(Boolean) as { href: string; title: string; why: string }[];
+  const uniqueRecs = recs.filter((r, i, arr) => arr.findIndex((x) => x.href === r.href) === i).slice(0, 3);
 
   return (
-    <div className="space-y-8 pb-16">
-      {demoMode && (
-        <div className="rounded-2xl border border-gold-400/30 bg-gold-400/10 px-4 py-3 text-sm text-gold-400 fly-in">
-          {t(loc, "demo.banner")}
-        </div>
-      )}
+    <div className="dash-page space-y-6 pb-16">
+      <header className="dash-hero">
+        <p className="gold-kicker">Главная</p>
+        <h1>{dayGreeting(loc, who, hour)}</h1>
+        <p>Готов разобрать что-то новое — или закрыть слабую тему.</p>
+      </header>
 
-      <section className="dash-hero fly-in">
-        <p className="text-[11px] uppercase tracking-[0.32em] text-gold-400">
-          {t(loc, "welcome")}, {user?.name}
-        </p>
-        <h1 className="font-serif italic text-4xl md:text-5xl mt-2 home-shine">
-          {user?.lastStudy
-            ? `Недавно: ${t(loc, `topic.${user.lastStudy.topic}`)}.`
-            : `${user?.name}, начнём с того, что сейчас важнее.`}
-        </h1>
-        <div className="title-underline mt-4" />
-        <div className="mt-6 flex flex-col md:flex-row md:items-end gap-4">
-          <div className="flex-1">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/40">{t(loc, "welcome.today")}</div>
-            <div className="font-display text-2xl mt-1">
-              {rec.title} · {rec.minutes} {t(loc, "minutes.short")}
-            </div>
-            <p className="text-sm text-white/50 mt-2">{rec.why}</p>
+      {!user?.diagnosticDone && (
+        <section className="panel-card p-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Определи уровень</h2>
+            <p className="text-sm text-[var(--muted)]">Пять вопросов. Слабые темы попадут в повтор.</p>
           </div>
-          <Button variant="glow" className="cta-pulse" onClick={() => goTutor("Объясни дискриминант простыми словами")}>
-            <Sparkles size={16} /> {t(loc, "cta.learn")}
-          </Button>
-        </div>
-      </section>
-
-      {user?.continueLesson && (
-        <section className="tpl-card" style={{ animationDelay: "80ms" }}>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-gold-400/80">{t(loc, "continue.title")}</div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-2">
-            <div className="flex-1">
-              <h2 className="font-serif italic text-2xl">{t(loc, `topic.${user.continueLesson.topicId}`)}</h2>
-              <p className="text-sm text-white/45 mt-1">
-                {t(loc, "continue.last")}: {user.continueLesson.progress}%
-              </p>
-              <ProgressBar value={user.continueLesson.progress} className="mt-3 max-w-md" />
-            </div>
-            <Link href={`/lesson/${user.continueLesson.topicId}`}>
-              <Button variant="light">{t(loc, "cta.continue")} →</Button>
-            </Link>
-          </div>
+          <Link href="/diagnostic" className="btn-primary !px-4">Начать срез</Link>
         </section>
       )}
 
-      <section className="text-center pt-2 fly-in" style={{ animationDelay: "120ms" }}>
-        <h2 className="font-serif italic text-4xl md:text-5xl">{t(loc, "hero.q")}</h2>
-        <p className="text-white/50 mt-3">{t(loc, "hero.hint")}</p>
-        <form onSubmit={onSubmit} className="mt-7 max-w-3xl mx-auto">
-          <div className="dash-ask flex flex-col md:flex-row gap-2 p-2">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t(loc, "hero.ph")}
-              className="flex-1 rounded-2xl px-4 py-4 bg-transparent outline-none text-base md:text-lg text-white placeholder:text-white/35"
-            />
-            <Button type="submit" variant="glow" className="md:px-6">
-              <Sparkles size={16} /> {t(loc, "cta.explain")}
-            </Button>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="stat-tile"><div className="k">Серия</div><div className="v">{user?.streak ?? 0} дн.</div></div>
+        <div className="stat-tile"><div className="k">XP</div><div className="v">{(user?.xp ?? 0).toLocaleString("ru-RU")}</div></div>
+        <div className="stat-tile"><div className="k">Точность</div><div className="v">{accuracy(user)}%</div></div>
+        <div className="stat-tile"><div className="k">Уровень</div><div className="v">{lv.number}</div></div>
+      </div>
+
+      <section className="panel-card p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-[var(--muted)]">Цель дня</p>
+            <h2 className="text-lg font-semibold">{Math.min(todayMin, dailyGoal)} / {dailyGoal} мин</h2>
           </div>
-        </form>
-        <div className="flex flex-wrap justify-center gap-2 mt-5">
-          {quick.map((item) => {
-            const Icon = item.icon;
-            const inner = (
-              <span className="dash-quick">
-                <Icon size={15} /> {t(loc, item.key)}
-              </span>
-            );
-            return item.href ? (
-              <Link key={item.key} href={item.href}>
-                {inner}
-              </Link>
-            ) : (
-              <button key={item.key} onClick={item.action}>
-                {inner}
-              </button>
-            );
-          })}
+          <Link href="/settings" className="text-sm text-[#163068]">Изменить</Link>
+        </div>
+        <ProgressBar value={goalPct} />
+      </section>
+
+      <section className="panel-card p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-[var(--muted)]">Продолжить</p>
+            <h2 className="text-lg font-semibold">{t(loc, `topic.${continueTopic}`)}</h2>
+            {topic && <p className="text-sm text-[var(--muted)]">{t(loc, `subject.${topic.subjectId}`)}</p>}
+          </div>
+          <Link href={`/lesson/${continueTopic}`} className="btn-primary !px-4">Продолжить урок</Link>
+        </div>
+        <ProgressBar value={user?.continueLesson?.progress ?? user?.subjectLevels[topic?.subjectId ?? "math"] ?? 0} />
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Link href={`/practice?topic=${continueTopic}`} className="chip-btn">Практика</Link>
+          <Link href={`/tests?topic=${continueTopic}`} className="chip-btn">Тест</Link>
+          <Link href={`/tutor?topic=${continueTopic}`} className="chip-btn">Спросить ИИ</Link>
         </div>
       </section>
 
-      <section>
-        <div className="flex items-end justify-between mb-4">
-          <h2 className="font-serif italic text-2xl">{t(loc, "popular")}</h2>
-          <Link href="/templates" className="text-sm text-gold-400 hover:text-white transition-colors">
-            Шаблоны →
-          </Link>
+      <section className="panel-card p-5 space-y-3">
+        <div className="flex justify-between items-baseline">
+          <h2 className="font-semibold">XP</h2>
+          <span className="text-sm text-[var(--muted)]">{lv.remaining} XP до уровня {lv.number + 1}</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {SUBJECTS.slice(0, 8).map((s, i) => (
-            <Link key={s.id} href={`/subjects/${s.id}`} className="tpl-card !p-4" style={{ animationDelay: `${100 + i * 50}ms` }}>
-              <div className="text-[11px] uppercase tracking-wider text-white/40">{t(loc, `cat.${s.category}`)}</div>
-              <div className="font-medium mt-1">{t(loc, `subject.${s.id}`)}</div>
-              <ProgressBar value={user?.subjectLevels[s.id] ?? 40} className="mt-3" />
+        <ProgressBar value={lv.progress} />
+        <p className="text-sm text-[var(--muted)]">+{XP_REWARDS.lesson} XP за урок · +{XP_REWARDS.task} за задачу</p>
+      </section>
+
+      <section className="panel-card p-5 space-y-3">
+        <h2 className="font-semibold">Рекомендуем</h2>
+        {uniqueRecs.length === 0 ? (
+          <EmptyState title="План ещё пуст" text="Пройди срез или первый урок." action="К предметам" href="/subjects" />
+        ) : (
+          uniqueRecs.map((r) => (
+            <Link key={r.href} href={r.href} className="block rounded-xl border border-[var(--line)] px-3 py-2 hover:bg-white/70">
+              <b className="block">{r.title}</b>
+              <span className="text-sm text-[var(--muted)]">{r.why}</span>
+            </Link>
+          ))
+        )}
+      </section>
+
+      <section className="grid lg:grid-cols-2 gap-3">
+        <div className="panel-card p-5 space-y-3">
+          <h2 className="font-semibold">Курсы</h2>
+          {fav.length === 0 ? (
+            <EmptyState title="Предметы не выбраны" text="Отметь любимые в настройках — здесь появится прогресс." action="Настройки" href="/settings" />
+          ) : fav.map((s) => s && (
+            <Link key={s.id} href={`/subjects/${s.id}`} className="block rounded-xl border border-[var(--line)] px-3 py-2 hover:bg-white/70">
+              <div className="flex justify-between text-sm">
+                <span>{t(loc, `subject.${s.id}`)}</span>
+                <span className="text-[var(--muted)]">{user?.subjectLevels[s.id] ?? 0}%</span>
+              </div>
+              <ProgressBar value={user?.subjectLevels[s.id] ?? 0} className="mt-2" />
             </Link>
           ))}
+          <Link href="/subjects" className="text-sm text-[#163068]">Все курсы →</Link>
+        </div>
+        <div className="panel-card p-5 space-y-3">
+          <h2 className="font-semibold">Серия</h2>
+          <StreakWeek days={user?.activityDays} locale={loc} />
+          <p className="text-sm text-[var(--muted)]">Решено задач: {tasksDone(user)} · дней подряд: {user?.streak ?? 0}</p>
         </div>
       </section>
 
-      <section className="grid md:grid-cols-2 gap-4">
-        <div className="tpl-card">
-          <h3 className="font-serif italic text-xl">{t(loc, "level.title")}</h3>
-          <div className="mt-4 space-y-3">
-            {["math", "physics", "chemistry", "english"].map((id) => (
-              <div key={id}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>{t(loc, `subject.${id}`)}</span>
-                  <span className="text-gold-400">{user?.subjectLevels[id] ?? 0}%</span>
-                </div>
-                <ProgressBar value={user?.subjectLevels[id] ?? 0} />
-              </div>
+      <section className="panel-card p-5 space-y-3">
+        <div className="flex justify-between">
+          <h2 className="font-semibold">Недавние чаты</h2>
+          <Link href="/tutor" className="text-sm text-[#163068]">Открыть чат</Link>
+        </div>
+        {recent.length === 0 ? (
+          <EmptyState title="Чатов ещё нет" text="Задай первый вопрос — история появится здесь." action="К репетитору" href="/tutor" />
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-2">
+            {recent.map((c) => (
+              <Link key={c.id} href={`/tutor?c=${c.id}`} className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
+                <b className="block truncate">{c.title}</b>
+                <span className="text-[var(--muted)]">{c.messages.length} сообщ.</span>
+              </Link>
             ))}
           </div>
-          <p className="mt-4 text-sm text-white/70">
-            Рекомендуем повторить: <strong className="text-gold-400">{t(loc, "topic.discriminant")}</strong>
-          </p>
-          <p className="text-xs text-white/40 mt-3">
-            {t(loc, lv.current.nameKey)} · {user?.xp.toLocaleString("ru-RU")} XP
-            {lv.next ? ` · ${t(loc, "level.to")} «${t(loc, lv.next.nameKey)}» ${t(loc, "level.left")} ${lv.remaining} XP` : ""}
-          </p>
-        </div>
-        <div className="tpl-card">
-          <h3 className="font-serif italic text-xl">{t(loc, "today.review")}</h3>
-          <ul className="mt-4 space-y-2">
-            {(user?.weakTopics ?? []).slice(0, 3).map((id) => (
-              <li key={id}>
-                <Link href={`/lesson/${id}`} className="block rounded-xl px-3 py-2.5 hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
-                  {t(loc, `topic.${id}`)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        )}
       </section>
     </div>
   );

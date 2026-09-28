@@ -17,6 +17,7 @@ export default function DiagnosticPage() {
   const [qs, setQs] = useState<TestQuestion[]>([]);
   const [i, setI] = useState(0);
   const [val, setVal] = useState("");
+  const [need, setNeed] = useState("");
   const [ok, setOk] = useState(0);
   const [done, setDone] = useState<number | null>(null);
 
@@ -29,15 +30,24 @@ export default function DiagnosticPage() {
 
   function next() {
     const q = qs[i];
+    if (!q) return;
+    if (!String(val).trim()) {
+      setNeed("Выберите ответ, чтобы продолжить.");
+      return;
+    }
+    setNeed("");
     const newOk = ok + (gradeAnswer(q, val) ? 1 : 0);
     if (i + 1 >= qs.length) {
       const score = newOk / qs.length;
-      const level = Math.round(score * 100) / 10;
-      setDone(level);
+      setDone(newOk);
       updateUser({
         diagnosticDone: true,
         onboardingDone: true,
         subjectLevels: { ...(user?.subjectLevels ?? {}), [subject]: Math.round(score * 100) },
+        weakTopics:
+          score < 0.7
+            ? Array.from(new Set([...(user?.weakTopics ?? []), subject === "math" ? "linear-eq" : "ohm"]))
+            : user?.weakTopics ?? [],
       });
       return;
     }
@@ -49,7 +59,7 @@ export default function DiagnosticPage() {
   if (done !== null) {
     return (
       <div className="max-w-lg space-y-4">
-        <h1 className="font-serif text-4xl">{t(loc, "diag.result")}: {done} / 10</h1>
+        <h1 className="font-serif text-4xl">{t(loc, "diag.result")}: {done} / {qs.length || 5}</h1>
         <p>Персональный маршрут: сначала слабые места, затем закрепление сильных тем.</p>
         <Button
           onClick={() => {
@@ -86,7 +96,11 @@ export default function DiagnosticPage() {
       {(q.options ?? []).length ? (
         <div className="space-y-2">
           {q.options!.map((o) => (
-            <button key={o} onClick={() => setVal(o)} className="block w-full text-start rounded-2xl border border-[var(--line)] px-4 py-3">
+            <button
+              key={o}
+              onClick={() => setVal(o)}
+              className={`block w-full text-start rounded-2xl border px-4 py-3 min-h-11 ${val === o ? "border-brand-600 bg-brand-50" : "border-[var(--line)]"}`}
+            >
               {o}
             </button>
           ))}
@@ -94,6 +108,7 @@ export default function DiagnosticPage() {
       ) : (
         <input className="w-full rounded-xl border border-[var(--line)] px-3 py-2" value={val} onChange={(e) => setVal(e.target.value)} />
       )}
+      {need && <p className="text-sm text-red-600">{need}</p>}
       <Button onClick={next}>{t(loc, "next")}</Button>
     </div>
   );

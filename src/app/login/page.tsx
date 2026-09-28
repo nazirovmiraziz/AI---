@@ -5,31 +5,34 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/Button";
-import { ShaderCanvas } from "@/components/ShaderCanvas";
-import { useApp } from "@/lib/store";
+import { AmbientField } from "@/components/AmbientField";
+import { KnowledgeFlow } from "@/components/KnowledgeFlow";
+import { peekLastLogin, peekSession, useApp } from "@/lib/store";
+import { DEMO_EMAIL } from "@/lib/demo-data";
+import { PasswordField } from "@/components/PasswordField";
 
 function AuthShell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
-  const { displayName } = useApp();
   return (
-    <div className="relative min-h-screen bg-[#05060b] text-[#f3f1ea] grid lg:grid-cols-2">
-      <ShaderCanvas />
+    <div className="force-light relative min-h-svh min-w-0 overflow-x-clip grid lg:grid-cols-2 bg-[#f8fbff] text-[#121826]">
+      <AmbientField />
       <div className="relative z-10 hidden lg:flex flex-col justify-between p-12">
-        <Logo inverted />
-        <div>
-          <p className="font-serif italic text-5xl leading-tight max-w-md">
-            {displayName ? `${displayName}, школа уже знает тебя.` : "Школа, которая узнаёт тебя с первого вопроса."}
-          </p>
-          <p className="text-white/50 mt-5 max-w-sm">Имя берётся из аккаунта. Репетитор обращается к тебе лично.</p>
-        </div>
-        <p className="text-white/30 text-sm">{displayName ? `Аккаунт · ${displayName}` : "Создай аккаунт — и тебя будут называть по имени."}</p>
-      </div>
-      <div className="relative z-10 flex items-center justify-center p-6 py-16">
-        <div className="w-full max-w-md rounded-[2rem] panel p-8">
-          <div className="lg:hidden mb-6">
-            <Logo inverted />
+        <Logo inverted={false} />
+        <div className="max-w-md">
+          <p className="text-4xl xl:text-5xl font-semibold leading-[1.2]">Войди в свой кабинет.</p>
+          <p className="text-[var(--muted)] mt-5">Если аккаунта ещё нет — создай его сам. Чужое имя здесь не появится.</p>
+          <div className="mt-10">
+            <KnowledgeFlow size="md" />
           </div>
-          <h1 className="font-serif text-4xl">{title}</h1>
-          <p className="text-white/50 text-sm mt-2">{sub}</p>
+        </div>
+        <p className="text-[var(--muted)] text-sm">Micro AI School</p>
+      </div>
+      <div className="relative z-10 flex items-center justify-center p-4 py-6 sm:py-12">
+        <div className="lift-card w-full max-w-md rounded-[1.4rem] p-5 sm:p-8">
+          <div className="lg:hidden mb-4">
+            <Logo inverted={false} />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-semibold">{title}</h1>
+          <p className="text-[var(--muted)] text-sm mt-2">{sub}</p>
           {children}
         </div>
       </div>
@@ -38,61 +41,104 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
 }
 
 export default function LoginPage() {
-  const { login, loginLast, lastUserEmail, displayName, hydrated, user } = useApp();
+  const { login, loginCloud, loginLast, loginDemo, lastUserEmail, displayName, hydrated, user } = useApp();
+  const [busy, setBusy] = useState(false);
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    if (hydrated && user) router.replace("/dashboard");
-  }, [hydrated, user, router]);
-
-  useEffect(() => {
-    if (lastUserEmail) setEmail(lastUserEmail);
-  }, [lastUserEmail]);
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!login(email, password)) {
-      setErr("Неверные данные. Проверьте почту и пароль.");
+    if (!hydrated) return;
+    if (user && user.email.toLowerCase() !== DEMO_EMAIL) {
+      router.replace("/dashboard");
       return;
     }
-    router.push("/dashboard");
+    const alive = peekSession();
+    if (alive && alive.email.toLowerCase() !== DEMO_EMAIL && loginLast()) router.replace("/dashboard");
+  }, [hydrated, user, router, loginLast]);
+
+  useEffect(() => {
+    const remembered = peekLastLogin();
+    if (remembered) {
+      setEmail(remembered.email);
+      setPassword(remembered.password);
+      return;
+    }
+    if (lastUserEmail) setEmail(lastUserEmail);
+  }, [lastUserEmail, hydrated]);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const mail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+      setErr("Введи нормальный email.");
+      return;
+    }
+    if (password.length < 4) {
+      setErr("Введи пароль.");
+      return;
+    }
+    const go = () => {
+      const next = sessionStorage.getItem("ssai-after-auth") || "/dashboard";
+      sessionStorage.removeItem("ssai-after-auth");
+      router.push(next);
+    };
+    if (login(mail, password)) {
+      go();
+      return;
+    }
+    setErr("");
+    setBusy(true);
+    const ok = await loginCloud(mail, password);
+    setBusy(false);
+    if (ok) go();
+    else setErr("Неверные данные. Проверь почту и пароль.");
   }
 
   return (
-    <AuthShell title="Войти" sub={displayName ? `С возвращением, ${displayName}.` : "Продолжить обучение в своей школе."}>
-      {displayName && (
+    <AuthShell
+      title="Вход"
+      sub={displayName ? `С возвращением, ${displayName}.` : "Войди в аккаунт, который создал сам."}
+    >
+      <div className="mt-5 flex flex-col gap-2">
         <Button
-          variant="glow"
-          className="w-full mt-6"
+          variant="secondary"
+          className="w-full"
           onClick={() => {
-            if (loginLast()) router.push("/dashboard");
-            else setErr("Войдите почтой и паролем.");
+            loginDemo();
+            router.push("/dashboard");
           }}
         >
-          Продолжить как {displayName}
+          Открыть демо учителя
         </Button>
-      )}
-      <form onSubmit={onSubmit} className="mt-6 space-y-3" style={{ colorScheme: "dark" }}>
-        <label className="block text-sm text-white/70">
-          Электронная почта
-          <input className="auth-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} style={{ animationDelay: "40ms" }} />
+        {displayName && (
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (loginLast()) router.push("/dashboard");
+              else setErr("Войди по почте и паролю.");
+            }}
+          >
+            Продолжить как {displayName}
+          </Button>
+        )}
+      </div>
+      <form onSubmit={onSubmit} noValidate className="mt-6 space-y-3">
+        <label className="block text-sm">
+          Почта
+          <input type="email" autoComplete="email" className="auth-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
-        <label className="block text-sm text-white/70">
-          Пароль
-          <input type="password" className="auth-field" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} style={{ animationDelay: "90ms" }} />
-        </label>
-        {err && <p className="text-sm text-red-400">{err}</p>}
-        <Button type="submit" variant="glow" className="w-full" disabled={!hydrated}>
-          Войти
+        <PasswordField value={password} onChange={setPassword} autoComplete="current-password" />
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <Button type="submit" className="w-full" disabled={!hydrated || busy}>
+          {busy ? "Ищем аккаунт…" : "Войти"}
         </Button>
       </form>
-      <p className="text-sm text-white/40 mt-5">
+      <p className="text-sm text-[var(--muted)] mt-5">
         Нет аккаунта?{" "}
-        <Link className="text-gold-400" href="/register">
-          Создать аккаунт
+        <Link className="text-brand-700 font-medium" href="/register">
+          Создать
         </Link>
       </p>
     </AuthShell>

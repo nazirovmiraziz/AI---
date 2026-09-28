@@ -1,4 +1,6 @@
 import type { StudentProfile, Flashcard, Conversation, StudyPlan, TestRecord } from "./types";
+import { emptyLangSchool, emptyTrack } from "./lang/types";
+import { firstLessonId } from "./lang/curriculum";
 
 export const DEMO_EMAIL = "alisher@smartschool.ai";
 export const DEMO_PASSWORD = "demo1234";
@@ -81,12 +83,13 @@ export const demoUser: StudentProfile = {
   strongTopics: ["percentages", "linear-eq", "functions", "english"],
   xp: 4820,
   streak: 12,
+  dailyGoalMin: 20,
   lastActiveDate: new Date().toISOString().slice(0, 10),
   achievements: ["first-topic", "streak-7", "first-exam", "hundred-tasks"],
   testHistory: tests,
   explainStyle: "student",
   hintOnly: false,
-  theme: "dark",
+  theme: "light",
   onboardingDone: true,
   diagnosticDone: true,
   continueLesson: { topicId: "quadratic", subjectId: "math", progress: 72 },
@@ -94,6 +97,23 @@ export const demoUser: StudentProfile = {
   weeklyMinutes: [35, 48, 20, 62, 40, 55, 28],
   topicsThisWeek: 6,
   studyMinutes: 1240,
+  langSchool: {
+    onboarded: true,
+    activeLanguage: "en",
+    hearts: 5,
+    coins: 40,
+    tracks: {
+      en: emptyTrack({
+        languageId: "en",
+        reason: "speak",
+        selfLevel: "zero",
+        cefr: "A1",
+        dailyMinutes: 15,
+        daysPerWeek: 7,
+        firstLesson: firstLessonId("en"),
+      }),
+    },
+  },
 };
 
 export const demoFlashcards: Flashcard[] = [
@@ -195,6 +215,11 @@ export const demoConversation: Conversation = {
 
 export const ACHIEVEMENTS = [
   { id: "first-topic", icon: "🏆" },
+  { id: "first-lesson", icon: "📘" },
+  { id: "first-unit", icon: "🧩" },
+  { id: "first-word", icon: "🗣" },
+  { id: "a1-complete", icon: "🎓" },
+  { id: "challenge-day", icon: "⚡" },
   { id: "streak-7", icon: "🔥" },
   { id: "streak-30", icon: "🔥" },
   { id: "hundred-tasks", icon: "🧠" },
@@ -223,7 +248,8 @@ export function levelFromXp(xp: number) {
   const nextMin = next?.min ?? current.min;
   const span = Math.max(1, nextMin - prevMin);
   const progress = next ? Math.min(100, ((xp - prevMin) / span) * 100) : 100;
-  return { current, next, progress, remaining: next ? Math.max(0, next.min - xp) : 0 };
+  const number = LEVELS.filter((l) => xp >= l.min).length;
+  return { current, next, progress, remaining: next ? Math.max(0, next.min - xp) : 0, number, floor: prevMin, ceil: nextMin };
 }
 
 export const XP_REWARDS = {
@@ -233,4 +259,6 @@ export const XP_REWARDS = {
   topic: 100,
   exam: 200,
   plan: 500,
+  focus: 15,
+  streak: 10,
 } as const;

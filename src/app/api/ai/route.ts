@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { MODE_INSTRUCTIONS } from "@/lib/ai/modes";
 import { SYSTEM_PROMPT } from "@/lib/ai-engine";
+import type { AiMode } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -11,26 +13,56 @@ function isYandexKey(key: string) {
 }
 
 function systemText(body: Record<string, unknown>) {
-  return `${SYSTEM_PROMPT}\nStudent profile: ${JSON.stringify(body.profile ?? {})}\nExplain style: ${body.style ?? "student"}\nLesson language: ${body.lessonLanguage ?? "ru"}\nHint-only: ${!!body.hintOnly}`;
+  const profile = (body.profile ?? null) as { name?: string } | null;
+  const raw = profile?.name?.trim() || "";
+  const name = /^(алишер|alisher|нигара|нигора|nigara)$/i.test(raw) ? "" : raw;
+  const messages = (body.messages as { role?: string; content?: string }[] | undefined) ?? [];
+  const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const mode = (typeof body.mode === "string" ? body.mode : "chat") as AiMode;
+  const modeText = MODE_INSTRUCTIONS[mode] ?? MODE_INSTRUCTIONS.chat;
+  return `${SYSTEM_PROMPT}
+
+${modeText}
+
+The student's name is: "${name || "(no name — do not invent one. Never say Alisher, Алишер, Нигара or Нигора)"}".
+Student profile: ${JSON.stringify({ ...(body.profile ?? {}), name })}
+Explain style: ${body.style ?? "simple"}
+Lesson language: ${body.lessonLanguage ?? "ru"}
+Hint-only: ${!!body.hintOnly}
+Latest student message: ${lastUser.slice(0, 500)}
+Answer the asked question directly and briefly, like Gemini. Give the answer. Do not ask a question back unless they asked to be tested.`;
 }
 
 export async function POST(req: NextRequest) {
-  const api = process.env.API_URL?.replace(/\/$/, "");
-  if (api) {
-    const body = await req.text();
-    const res = await fetch(`${api}/api/ai`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    const data = await res.json().catch(() => ({ error: "upstream" }));
-    return NextResponse.json(data, { status: res.status });
+  const raw = await req.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = raw ? JSON.parse(raw) : {};
+  } catch {
+    return NextResponse.json({ error: "bad_request", message: "Некорректный запрос." }, { status: 400 });
   }
 
-  try {
-    const body = await req.json();
-    const messages = body.messages as { role: string; content: string }[] | undefined;
+  const api = process.env.API_URL?.replace(/\/$/, "");
+  if (api) {
+    try {
+      const res = await fetch(`${api}/api/ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: raw,
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data) return NextResponse.json(data);
+      }
+    } catch {
+      /* fall through to local providers */
+    }
+  }
+    const messages = ((body.messages as { role: string; content: string }[] | undefined) ?? []).slice(-8);
     const image = body.image as string | undefined;
+    if (image && image.length > 1_400_000) {
+      return NextResponse.json({ error: "too_large", message: "Фото слишком большое. Загрузите снимок до 1 МБ." }, { status: 413 });
+    }
     if (!messages?.length && !image) {
       return NextResponse.json({ error: "empty", message: "Пустой запрос." }, { status: 400 });
     }
@@ -76,9 +108,6 @@ export async function POST(req: NextRequest) {
         { status: aborted ? 504 : 502 }
       );
     }
-  } catch {
-    return NextResponse.json({ error: "bad_request", message: "AI временно недоступен. Попробуйте ещё раз." }, { status: 400 });
-  }
 }
 
 async function askOpenAiCompatible(
@@ -96,9 +125,9 @@ async function askOpenAiCompatible(
     openaiMessages.push({
       role: "user",
       content: url.includes("groq.com")
-        ? (messages?.[messages.length - 1]?.content || "Распознай задачу и объясни по шагам. Не давай только ответ.") + "\n\n(Фото приложено, но эта модель видит только текст — попроси описать условие.)"
+        ? (messages?.[messages.length - 1]?.content || "Распознай задачу на фото. Спроси ученика про первый шаг, не выдавай готовый ответ.") + "\n\n(Фото приложено, но эта модель видит только текст — попроси описать условие.)"
         : [
-            { type: "text", text: messages?.[messages.length - 1]?.content || "Распознай задачу на фото и объясни решение по шагам. Не давай только ответ." },
+            { type: "text", text: messages?.[messages.length - 1]?.content || "Распознай задачу на фото. Спроси ученика про первый шаг, не выдавай готовый ответ." },
             { type: "image_url", image_url: { url: image } },
           ],
     });
@@ -120,6 +149,18 @@ async function askOpenAiCompatible(
   return parseChat(res);
 }
 
+function geminiParts(text: string, image?: string) {
+  const parts: Record<string, unknown>[] = [];
+  if (text) parts.push({ text });
+  if (image) {
+    const m = String(image).match(/^data:([^;]+);base64,(.+)$/);
+    if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    else parts.push({ text: "К сообщению приложено фото. Если не видишь изображение, попроси описать условие и разбери по шагам." });
+  }
+  if (!parts.length) parts.push({ text: " " });
+  return parts;
+}
+
 async function askGemini(
   key: string,
   body: Record<string, unknown>,
@@ -128,16 +169,15 @@ async function askGemini(
   signal: AbortSignal
 ) {
   const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  const contents = (messages ?? []).map((m) => ({
+  const list = messages ?? [];
+  const contents = list.map((m, i) => ({
     role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
+    parts: geminiParts(m.content, i === list.length - 1 && m.role !== "assistant" ? image : undefined),
   }));
-  if (image) {
-    contents.push({
-      role: "user",
-      parts: [{ text: "К сообщению приложено фото. Если не видишь изображение, попроси описать условие и разбери по шагам." }],
-    });
+  if (image && (!list.length || list[list.length - 1]?.role === "assistant")) {
+    contents.push({ role: "user", parts: geminiParts("Разбери фото по шагам.", image) });
   }
+  const quiz = body.mode === "quiz";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
     {
@@ -146,7 +186,7 @@ async function askGemini(
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemText(body) }] },
         contents,
-        generationConfig: { temperature: 0.6, maxOutputTokens: 1200 },
+        generationConfig: { temperature: quiz ? 0.4 : 0.6, maxOutputTokens: quiz ? 2500 : 1600 },
       }),
       signal,
     }
@@ -186,7 +226,7 @@ async function askYandex(
   if (image) {
     chat.push({
       role: "user",
-      content: "К сообщению приложено фото задачи. Если изображение недоступно, попроси ученика описать условие словами и разбери по шагам, не давая только ответ.",
+      content: "К сообщению приложено фото задачи. Если изображение недоступно, попроси ученика описать условие словами и сразу дай решение с ответом.",
     });
   }
 

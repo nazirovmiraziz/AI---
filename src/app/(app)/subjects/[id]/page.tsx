@@ -30,23 +30,27 @@ export default function SubjectPage() {
           </span>
         ))}
       </div>
-      <div className="grid md:grid-cols-2 gap-3">
-        {subject.topics.map((topic) => (
-          <div key={topic.id} className="rounded-3xl border border-[var(--line)] bg-white dark:bg-ink-900 p-5">
-            <div className="text-xs text-ink-400">{topic.grade.join(", ")} {t(loc, "grade.n")} · {topic.minutes} {t(loc, "minutes")}</div>
-            <h2 className="text-lg font-medium mt-1">{t(loc, `topic.${topic.id}`)}</h2>
-            <ProgressBar value={user?.learnedTopics.includes(topic.id) ? 100 : user?.weakTopics.includes(topic.id) ? 45 : 20} className="mt-3" />
-            <div className="flex gap-2 mt-4">
-              <Link href={`/lesson/${topic.id}`}>
-                <Button>{t(loc, "cta.learn")}</Button>
-              </Link>
-              <Link href={`/tests?topic=${topic.id}`}>
-                <Button variant="secondary">{t(loc, "nav.tests")}</Button>
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
+      <ol className="learn-path">
+        {subject.topics.map((topic, i) => {
+          const done = user?.learnedTopics.includes(topic.id);
+          const current = user?.continueLesson?.topicId === topic.id;
+          return (
+            <li key={topic.id} className={`learn-path-item ${done ? "done" : ""} ${current ? "now" : ""}`}>
+              <span className="learn-path-dot" aria-hidden>{done ? "✓" : i + 1}</span>
+              <div className="rounded-3xl border border-[var(--line)] bg-white dark:bg-[var(--bg-elev)] p-5">
+                <div className="text-xs text-[var(--muted)]">{topic.grade.join(", ")} {t(loc, "grade.n")} · {topic.minutes} {t(loc, "minutes")}</div>
+                <h2 className="text-lg font-medium mt-1">{t(loc, `topic.${topic.id}`)}</h2>
+                <ProgressBar value={done ? 100 : user?.weakTopics.includes(topic.id) ? 45 : current ? 60 : 20} className="mt-3" />
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <Button href={`/lesson/${topic.id}`}>{t(loc, "cta.learn")}</Button>
+                  <Button href={`/practice?topic=${topic.id}&subject=${subject.id}`} variant="secondary">Практика</Button>
+                  <Button href={`/tests?topic=${topic.id}`} variant="secondary">{t(loc, "nav.tests")}</Button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

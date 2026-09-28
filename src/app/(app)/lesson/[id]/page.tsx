@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getLessonByTopic } from "@/lib/lessons";
@@ -21,7 +21,7 @@ const ALT = [
 
 export default function LessonPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, addXp, markTopicProgress, addConversation, updateUser } = useApp();
+  const { user, addXp, markTopicProgress, addConversation, updateUser, recordTopic } = useApp();
   const router = useRouter();
   const loc = user?.language ?? "ru";
   const lesson = getLessonByTopic(id);
@@ -30,6 +30,12 @@ export default function LessonPage() {
   const [practice, setPractice] = useState<Record<number, string>>({});
   const [show, setShow] = useState<Record<number, boolean>>({});
   const [diff, setDiff] = useState(topic?.difficulty ?? "medium");
+  const [practiceErr, setPracticeErr] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (id) recordTopic(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const title = t(loc, `topic.${id}`);
 
@@ -128,6 +134,11 @@ export default function LessonPage() {
               </Button>
               <Button
                 onClick={() => {
+                  if (!(practice[i] ?? "").trim()) {
+                    setPracticeErr({ ...practiceErr, [i]: "Сначала напишите ответ." });
+                    return;
+                  }
+                  setPracticeErr({ ...practiceErr, [i]: "" });
                   const ok = (practice[i] ?? "").toLowerCase().includes(p.answer.toLowerCase());
                   if (ok) addXp(XP_REWARDS.task, "Решена задача");
                   setShow({ ...show, [i]: true });
@@ -136,6 +147,7 @@ export default function LessonPage() {
                 {t(loc, "submit")}
               </Button>
             </div>
+            {practiceErr[i] && <p className="text-sm text-red-600 mt-2">{practiceErr[i]}</p>}
             {show[i] && <p className="text-sm text-ink-600 mt-3">{p.hint} · Ориентир: {p.answer}</p>}
           </div>
         ))}
@@ -148,9 +160,6 @@ export default function LessonPage() {
         <Button variant="secondary" onClick={() => openTutor("Объясни иначе")}>
           🔄 {t(loc, "explain.again")}
         </Button>
-        <Link href={`/tests?topic=${id}`}>
-          <Button>{t(loc, "lesson.mini")}</Button>
-        </Link>
         <Button
           variant="secondary"
           onClick={() => {
@@ -191,6 +200,12 @@ export default function LessonPage() {
             {t(loc, `topic.${content.next}`)}
           </Link>
         </p>
+      </section>
+
+      <section className="rounded-3xl border border-[var(--line)] bg-white p-6 space-y-3">
+        <h2 className="font-medium">Тест в конце урока</h2>
+        <p className="text-sm text-[var(--muted)]">Сначала прочитай урок выше. Проверка открывается только теперь.</p>
+        <Button href={`/tests?topic=${id}`}>{t(loc, "lesson.mini")}</Button>
       </section>
     </div>
   );

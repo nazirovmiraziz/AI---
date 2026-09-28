@@ -1,17 +1,17 @@
 export function ProgressBar({
   value,
   className = "",
+  tone = "brand",
 }: {
   value: number;
   className?: string;
+  tone?: "brand" | "ok" | "warn";
 }) {
   const v = Math.max(0, Math.min(100, value));
+  const color = tone === "ok" ? "var(--ok)" : tone === "warn" ? "var(--warn)" : "var(--accent)";
   return (
-    <div className={`h-1.5 rounded-full bg-black/8 dark:bg-white/10 overflow-hidden ${className}`}>
-      <div
-        className="h-full rounded-full bg-gradient-to-r from-brand-500 via-brand-400 to-gold-400 transition-all duration-700"
-        style={{ width: `${v}%` }}
-      />
+    <div className={`progress-track ${className}`} role="progressbar" aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}>
+      <div className="progress-fill" style={{ width: `${v}%`, background: color }} />
     </div>
   );
 }

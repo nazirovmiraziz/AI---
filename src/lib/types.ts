@@ -40,6 +40,10 @@ export interface Topic {
   progress?: number;
 }
 
+export type AiMode = "chat" | "tutor" | "practice" | "homework" | "quiz" | "translator" | "coding" | "explain";
+
+export type MessageFeedback = "up" | "down";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -54,7 +58,23 @@ export interface ChatMessage {
     quizPrompt?: boolean;
     hints?: string[];
     understanding?: number;
+    image?: string;
+    fileName?: string;
+    feedback?: MessageFeedback;
+    saved?: boolean;
+    status?: "sent" | "thinking" | "error";
+    error?: string;
   };
+}
+
+export interface AppNotice {
+  id: string;
+  kind: "task" | "streak" | "ach" | "ai";
+  title: string;
+  text: string;
+  href?: string;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface Conversation {
@@ -63,6 +83,7 @@ export interface Conversation {
   pinned: boolean;
   subjectId?: string;
   topicId?: string;
+  mode?: AiMode;
   messages: ChatMessage[];
   updatedAt: string;
   lessonLanguage: Locale;
@@ -102,6 +123,7 @@ export interface ExamSession {
   questions: TestQuestion[];
   answers: Record<string, unknown>;
   skipped: string[];
+  marked?: string[];
   startedAt: string;
   durationSec: number;
   finished?: boolean;
@@ -174,19 +196,29 @@ export interface StudentProfile {
   strongTopics: string[];
   xp: number;
   streak: number;
+  dailyGoalMin?: number;
   lastActiveDate: string;
   achievements: string[];
   testHistory: TestRecord[];
   explainStyle: ExplainStyle;
   hintOnly: boolean;
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "system";
+  animationsOn?: boolean;
+  soundOn?: boolean;
   onboardingDone: boolean;
   diagnosticDone: boolean;
   continueLesson?: { topicId: string; subjectId: string; progress: number };
   lastStudy?: { topic: string; date: string };
+  recentTopics?: string[];
   weeklyMinutes: number[];
   topicsThisWeek: number;
   studyMinutes: number;
+  activityDays?: string[];
+  favoriteTopics?: string[];
+  inbox?: AppNotice[];
+  voiceOn?: boolean;
+  notifyOn?: boolean;
+  langSchool?: import("./lang/types").LanguageSchoolState;
 }
 
 export interface AppState {

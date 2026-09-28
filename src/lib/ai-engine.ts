@@ -25,37 +25,86 @@ export interface Detected {
 }
 
 const TOPIC_HINTS: Record<string, string[]> = {
-  quadratic: ["квадратн", "quadratic", "ax²", "ax2"],
-  discriminant: ["дискриминант", "discriminant", "b² - 4ac", "d ="],
-  "linear-eq": ["линейн", "linear", "2x + 5", "уравнен"],
-  percentages: ["процент", "percent"],
-  photosynthesis: ["фотосинтез", "photosynthesis"],
-  ohm: ["ом", "ohm", "ток", "напряжен"],
-  pythagoras: ["пифагор", "pythagoras", "гипотенуз"],
-  tenses: ["present", "время", "tenses", "perfect"],
+  ohm: ["ом", "ohm", "закон ома", "ток", "напряжен", "сопротивлен", "ампер", "вольт"],
+  newton: ["ньютон", "сила ", "силы", "f = ma", "f=ma", "инерц", "действие и противо"],
+  energy: ["энерг", "джоул", "кинетич", "потенциал", "мощност", "ватт", "работа сил"],
+  kinematics: ["кинемат", "скорост", "ускорен", "равномерн движен", "путь и время"],
   "sky-blue": ["небо голуб", "why is the sky", "рассеян"],
-  functions: ["функци", "function", "график"],
-  systems: ["систем", "system of"],
+  photosynthesis: ["фотосинтез", "photosynthesis", "хлорофилл", "хлоропласт"],
+  quadratic: ["квадратн", "quadratic", "ax²", "ax2"],
+  discriminant: ["дискриминант", "discriminant", "b² - 4ac"],
+  "linear-eq": ["линейн уравн", "linear eq", "2x + 5", "3x + 5", "3x+", "2x+"],
+  percentages: ["процент", "percent"],
+  pythagoras: ["пифагор", "pythagoras", "гипотенуз"],
+  tenses: ["present simple", "present continuous", "present perfect", "время глагол", "tenses"],
+  functions: ["функци", "function", "график функции"],
+  systems: ["систем уравн", "system of eq"],
 };
+
+const PHYSICS_MARK = [
+  "физик",
+  "ньютон",
+  "сила",
+  "скорост",
+  "ускорен",
+  "энерг",
+  "давлен",
+  "масса",
+  "плотност",
+  "архимед",
+  "кинемат",
+  "динамик",
+  "оптик",
+  "магнит",
+  "гравит",
+  "температур",
+  "тепло",
+  "звук",
+  "свет",
+  "электрон",
+  "протон",
+  "атом",
+  "механик",
+  "траектори",
+  "импульс",
+  "рычаг",
+  "трение",
+  "ньютона",
+];
 
 export function detectQuery(text: string, style?: ExplainStyle): Detected {
   const q = text.toLowerCase();
-  let topicId: string | undefined;
-  for (const [id, keys] of Object.entries(TOPIC_HINTS)) {
-    if (keys.some((k) => q.includes(k))) {
-      topicId = id;
-      break;
+  const physicsAsk = PHYSICS_MARK.some((k) => q.includes(k));
+  const mathAsk = /матем|алгебр|квадратн|дискриминант|уравнен|процент|пифагор/.test(q) && !physicsAsk;
+  const hasQuadratic = /x\s*\^\s*2|x²|ax²|квадратн уравн|дискриминант/.test(q);
+  const hasLinear = !hasQuadratic && !physicsAsk && /(?:\d+\s*)?x\s*[+\-=]\s*\d|линейн уравн/.test(q);
+
+  let topicId: string | undefined = hasLinear ? "linear-eq" : hasQuadratic ? (/дискриминант/.test(q) ? "discriminant" : "quadratic") : undefined;
+  if (!topicId) {
+    for (const [id, keys] of Object.entries(TOPIC_HINTS)) {
+      if (keys.some((k) => q.includes(k))) {
+        topicId = id;
+        break;
+      }
     }
   }
-  const subjectId = topicId ? getTopic(topicId)?.subjectId : q.includes("физик") ? "physics" : q.includes("матем") ? "math" : undefined;
+  const subjectId = topicId
+    ? getTopic(topicId)?.subjectId ?? (physicsAsk ? "physics" : mathAsk ? "math" : undefined)
+    : physicsAsk
+      ? "physics"
+      : mathAsk
+        ? "math"
+        : q.includes("англий") || q.includes("english")
+          ? "english"
+          : undefined;
 
   let intent: AiIntent = "explain";
   if (/реши за меня|сделай дз|homework|solve this for me/.test(q)) intent = "homework";
   else if (/проверь мои знания|check my|quiz me|проверь меня/.test(q)) intent = "check";
-  else if (/тест|quiz|создай тест/.test(q)) intent = "quiz";
-  else if (/план|30 дней|prepare in/.test(q)) intent = "plan";
+  else if (/создай тест|сгенерируй тест|quiz me/.test(q)) intent = "quiz";
+  else if (/учебн\w* план|план на 30|prepare in 30/.test(q)) intent = "plan";
   else if (/не понял|непонятно|confused|объясни иначе/.test(q)) intent = "confused";
-  else if (/не говори ответ|хочу решить сам|hint only|подсказ/.test(q)) intent = "hint";
+  else if (/не говори ответ|хочу решить сам|hint only/.test(q)) intent = "hint";
   else if (/сочинен|essay|проверь текст/.test(q)) intent = "essay";
   else if (/экзамен|exam/.test(q)) intent = "exam";
   else if (/перевод|translate|acceleration/.test(q)) intent = "translate";
@@ -73,15 +122,15 @@ export function detectQuery(text: string, style?: ExplainStyle): Detected {
 }
 
 const STYLES: Record<ExplainStyle, (body: string) => string> = {
-  child: (b) => `Представь, что это история.\n\n${b}\n\nЕсли что-то звучит сложно — остановись и спроси. Я объясню ещё проще.`,
-  student: (b) => `${b}\n\nДавай после этого решим маленький пример вместе — так лучше запоминается.`,
-  teacher: (b) => `Краткий методический конспект:\n\n${b}\n\nТипичные ошибки учеников: путают знак b, забывают, что a ≠ 0, считают D ответом уравнения.`,
-  short: (b) => b.split("\n").filter(Boolean).slice(0, 4).join("\n"),
-  detailed: (b) => `${b}\n\nДополнительно: проверь единицы, подставь корни обратно в уравнение и сравни с графиком функции — это три независимых способа убедиться, что решение верное.`,
+  child: (b) => `${b}\n\nЕсли слово непонятно — напиши «ещё проще».`,
+  student: (b) => `${b}\n\nТеперь один маленький пример — так лучше запоминается.`,
+  teacher: (b) => `${b}\n\nЧастая ошибка: путают названия величин и пропускают единицы.`,
+  short: (b) => b.split("\n").filter(Boolean).slice(0, 6).join("\n"),
+  detailed: (b) => `${b}\n\nЕщё раз своими словами: сначала «что это», потом формула, потом крошечный пример.`,
   steps: (b) => b,
-  funny: (b) => `${b}\n\nДискриминант — как погода перед прогулкой: он не гуляет за тебя, но говорит, брать ли зонт (то есть сколько корней искать).`,
-  exam: (b) => `Формулировка «на экзамен»:\n\n${b}\n\nОформи решение: дано → формула → вычисления → проверка → ответ. Без проверки балл часто снижают.`,
-  simple: (b) => b.replace(/дискриминант/gi, "индикатор числа корней").replace(/коэффициент/gi, "число перед x"),
+  funny: (b) => `${b}\n\nЗапомни так: сначала простыми словами, потом одна формула, потом один пример.`,
+  exam: (b) => `${b}\n\nКак на контрольной: дано → формула → счёт → проверка → ответ.`,
+  simple: (b) => b,
 };
 
 const TOPICS: Record<string, { title: string; zero: string; example: string; together: string; task: string; answer: string; whyWrong: string }> = {
@@ -120,6 +169,33 @@ const TOPICS: Record<string, { title: string; zero: string; example: string; tog
     task: "U = 9 В, R = 3 Ом. Чему равен ток?",
     answer: "3",
     whyWrong: "Делим напряжение на сопротивление, не наоборот.",
+  },
+  newton: {
+    title: "Законы Ньютона",
+    zero: "Сила говорит телу, как менять скорость. Просто: толкнул — поехало, перестал толкать в космосе — летит дальше. F = m · a: чем тяжелее тело, тем сильнее надо толкать, чтобы разогнать.",
+    example: "Масса 2 кг, ускорение 3 м/с². Сила F = 2 × 3 = 6 Н.",
+    together: "Первый закон: без силы скорость не меняется. Второй: F = ma. Третий: ты давишь на стену — стена давит на тебя так же.",
+    task: "Масса 4 кг, ускорение 2 м/с². Какая сила?",
+    answer: "8",
+    whyWrong: "Силу считают как массу умножить на ускорение, не делить.",
+  },
+  energy: {
+    title: "Энергия и работа",
+    zero: "Энергия — запас «возможности сделать дело». Работа — когда сила сдвигает тело. Единица — джоуль.",
+    example: "Поднять книгу: ты делаешь работу против тяжести, запас потенциальной энергии растёт.",
+    together: "Кинетическая — от скорости. Потенциальная — от высоты. Они могут переходить друг в друга.",
+    task: "Что больше меняет кинетическую энергию: скорость или масса, если скорость выросла сильно?",
+    answer: "скорость",
+    whyWrong: "В формуле mv²/2 скорость в квадрате, поэтому она влияет сильнее.",
+  },
+  kinematics: {
+    title: "Движение",
+    zero: "Скорость — как быстро меняется путь. Ускорение — как быстро меняется скорость. Если ускорения нет, скорость одна и та же.",
+    example: "Ехал 2 часа по 40 км/ч. Путь s = v · t = 80 км.",
+    together: "Сначала напиши, что дано: путь, время или скорость. Потом одна формула. Потом числа.",
+    task: "Скорость 10 м/с, время 5 с. Какой путь?",
+    answer: "50",
+    whyWrong: "Путь — скорость умножить на время, не делить.",
   },
   pythagoras: {
     title: "Теорема Пифагора",
@@ -183,6 +259,30 @@ function localize(text: string, lang: Locale) {
   return text;
 }
 
+function solveLinearPlain(text: string) {
+  const compact = text.replace(/\s/g, "").replace(/−/g, "-");
+  const m = compact.match(/(-?\d*)x([+-]\d+)=(-?\d+)/i);
+  if (!m) return "";
+  const a = m[1] === "" || m[1] === "+" ? 1 : m[1] === "-" ? -1 : Number(m[1]);
+  const b = Number(m[2]);
+  const c = Number(m[3]);
+  if (!a || !Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) return "";
+  const left = c - b;
+  const x = left / a;
+  if (!Number.isFinite(x)) return "";
+  const shown = Number.isInteger(x) ? String(x) : String(Math.round(x * 100) / 100);
+  const leftText = `${a === 1 ? "" : a === -1 ? "-" : a}x ${b >= 0 ? `+ ${b}` : `− ${Math.abs(b)}`} = ${c}`;
+  return `Ничего страшного. Разберём ${leftText} простыми словами.
+
+Представь весы. Слева ${Math.abs(a)} одинаковых кошелька и ещё ${Math.abs(b)} рублей. Справа ${c} рублей.
+
+Уберём с обеих чаш по ${Math.abs(b)} рублей. Останется ${a}x = ${left}.
+
+Теперь делим обе стороны на ${Math.abs(a)}. Получается x = ${shown}.
+
+Ответ: x = ${shown}. Проверка: ${a}·${shown} ${b >= 0 ? `+ ${b}` : `− ${Math.abs(b)}`} = ${c}.`;
+}
+
 export function buildTutorReply(opts: {
   text: string;
   style: ExplainStyle;
@@ -192,48 +292,68 @@ export function buildTutorReply(opts: {
   history: ChatMessage[];
 }): { content: string; meta: ChatMessage["meta"] } {
   const detected = detectQuery(opts.text, opts.style);
-  const topic = detected.topicId ?? "quadratic";
-  const pack = TOPICS[topic] ?? {
-    title: "Тема",
-    zero: `Разберём запрос: «${opts.text}». Сначала выясним, что уже известно, затем объясним с нуля, потом посчитаем пример.`,
-    example: "Возьмём самый простой случай и не будем прыгать к ответу.",
-    together: "Я покажу первый шаг. Следующий — твоя очередь.",
-    task: "Попробуй сформулировать, что именно нужно найти.",
-    answer: "",
-    whyWrong: "Ошибка обычно в пропущенном шаге, а не в «глупом» результате.",
-  };
-  const subjectId = detected.subjectId ?? getTopic(topic)?.subjectId ?? "math";
+  const topic = detected.topicId;
+  const subjectId = detected.subjectId ?? (topic ? getTopic(topic)?.subjectId : undefined);
+  const pack =
+    (topic && TOPICS[topic]) ||
+    (subjectId === "physics"
+      ? {
+          title: "Физика",
+          zero: `Ты спросил про физику: «${opts.text.slice(0, 160)}». Физика — про то, как устроен мир: сила, движение, свет, тепло. Не путаю это с алгеброй.`,
+          example: "Сначала назови, что дано простыми словами. Потом одна формула. Потом крошечный пример с числами.",
+          together: "Коротко: сначала смысл явления, потом формула, потом крошечный пример с числами.",
+          task: "Своими словами: о чём этот закон или явление? Одно предложение.",
+          answer: "",
+          whyWrong: "Часто путают названия величин. Сначала «что это», потом формула.",
+        }
+      : {
+          title: detected.subjectId === "math" ? "Математика" : "Тема",
+          zero: `Разберём именно твой вопрос: «${opts.text.slice(0, 160)}». Сначала простыми словами, без чужой темы.`,
+          example: "Возьмём самый простой случай и сразу доведём до ответа.",
+          together: "Итог: идея, один пример, готовый ответ.",
+          task: "Напиши, что уже понял, одним предложением.",
+          answer: "",
+          whyWrong: "Ошибка обычно в пропущенном шаге, а не в «глупом» результате.",
+        });
 
   if (detected.intent === "homework" || /реши за меня|домашн/.test(opts.text.toLowerCase())) {
+    const linear = topic === "linear-eq" ? solveLinearPlain(opts.text) : "";
     return {
-      content: localize(
-        `Давай решим вместе, а не за тебя. Я покажу первый шаг, а следующий попробуешь ты.\n\nПервый шаг: выпиши, что дано и что нужно найти. Если это уравнение — оставь неизвестное с одной стороны.\n\nНапиши, что получилось — продолжим.`,
-        opts.locale
-      ),
-      meta: { topic, subject: subjectId, style: opts.style, understanding: 50 },
+      content: localize(linear || [pack.zero, pack.example, pack.together].join("\n\n"), opts.locale),
+      meta: { topic, subject: subjectId, style: opts.style, understanding: 50, quizPrompt: false },
     };
   }
 
-  if (opts.hintOnly || detected.intent === "hint") {
+  const wantsExplain = /объясн|расскаж|что так|как работ|законы ньютон/i.test(opts.text);
+  if ((opts.hintOnly || detected.intent === "hint") && !wantsExplain) {
+    const hintBody =
+      topic === "linear-eq"
+        ? `Режим «я хочу решить сам».\n\n💡 Подсказка 1: это линейное уравнение — x в первой степени, квадрата нет.\n💡 Подсказка 2: посмотри, какое число прибавляют к части с x, и убери его с обеих сторон.\n💡 Более сильная подсказка: потом раздели обе стороны на коэффициент при x.\n\nНапиши, что получилось после первого шага — проверю.`
+        : topic === "photosynthesis"
+        ? `Режим «я хочу решить сам».\n\n💡 Подсказка 1: из чего растение «готовит еду»?\n💡 Подсказка 2: что получается кроме глюкозы?\n💡 Более сильная подсказка: процесс идёт в хлоропластах на свету.\n\nОтвет целиком не пишу — сначала твоя формулировка.`
+        : topic === "ohm"
+        ? `Режим «я хочу решить сам».\n\n💡 Подсказка 1: закон Ома связывает ток, напряжение и сопротивление.\n💡 Подсказка 2: какая величина известна, какую ищем?\n💡 Более сильная подсказка: I = U / R.\n\nПосчитай сам, затем сверим.`
+        : `Режим «я хочу решить сам».\n\n💡 Подсказка 1: определи тип задачи и выпиши данные.\n💡 Подсказка 2: выбери формулу, не считая сразу ответ.\n💡 Более сильная подсказка: ${topic === "quadratic" || topic === "discriminant" ? "сначала найди дискриминант D, и только потом корни." : "сделай один шаг и остановись."}\n\nКогда разрешишь — покажу полное решение.`;
     return {
-      content: localize(
-        `Режим «я хочу решить сам».\n\n💡 Подсказка 1: определи тип задачи и выпиши данные.\n💡 Подсказка 2: выбери формулу, не считая сразу ответ.\n💡 Более сильная подсказка: для квадратного уравнения сначала найди D, и только потом корни.\n\nКогда разрешишь — покажу полное решение.`,
-        opts.locale
-      ),
+      content: localize(hintBody, opts.locale),
       meta: {
         topic,
         subject: subjectId,
-        hints: ["Определи тип задачи", "Выпиши формулу", "Для квадратного: сначала D"],
+        hints: ["Определи тип задачи", "Сделай один шаг", "Не проси готовый ответ"],
       },
     };
   }
 
   if (detected.intent === "confused") {
+    const confused =
+      subjectId === "physics"
+        ? `Ещё проще.\n\n${pack.zero}\n\n${pack.example}\n\n${pack.together}`
+        : topic === "linear-eq"
+        ? solveLinearPlain(opts.text) ||
+          `Уравнение — как весы: слева и справа должно быть поровну.\n1) Убери лишнее число с обеих сторон.\n2) Останется несколько одинаковых x.\n3) Раздели, чтобы остался один x.`
+        : `Объясняю иначе.\n\n${pack.zero}\n\n${pack.example}\n\n${pack.together}`;
     return {
-      content: localize(
-        `Хорошо, объясняю иначе.\n\n🔹 С примером из жизни: дискриминант как прогноз погоды — он не гуляет за тебя, но говорит, сколько «дней» (корней) будет.\n🔹 Через аналогию: a, b, c — ингредиенты, D — проба, готово ли блюдо.\n🔹 Пошагово: 1) узнай a, b, c  2) посчитай D  3) посмотри знак  4) только потом формула корней.\n🔹 Очень коротко: D = b² − 4ac решает, сколько корней искать.\n\nКакой способ зашёл лучше?`,
-        opts.locale
-      ),
+      content: localize(confused, opts.locale),
       meta: { topic, subject: subjectId },
     };
   }
@@ -241,7 +361,7 @@ export function buildTutorReply(opts: {
   if (detected.intent === "check") {
     return {
       content: localize(
-        `Проверяю знания — правильный ответ сразу не показываю.\n\nВопрос 1. Что показывает дискриминант?\nНапиши своими словами.\n\nПосле твоего ответа разберём, где понимание твёрдое, а где стоит повторить.`,
+        `Сначала коротко, потом проверка.\n\n${pack.zero}\n\nВопрос: ${pack.task}\nНапиши своими словами. Правильный ответ сразу не показываю.`,
         opts.locale
       ),
       meta: { topic, subject: subjectId, quizPrompt: true },
@@ -249,11 +369,12 @@ export function buildTutorReply(opts: {
   }
 
   if (detected.intent === "plan") {
+    const plan =
+      subjectId === "physics"
+        ? `Короткий план по физике:\n\n1. Что такое сила и движение\n2. Формула своими словами\n3. Один пример с числами\n4. Повторение перед контрольной`
+        : `Короткий план:\n\n1. Идея простыми словами\n2. Один пример\n3. Решение похожей задачи\n4. Повторение`;
     return {
-      content: localize(
-        `Персональный план на 30 дней (математика):\n\nДень 1 — Линейные уравнения\nДень 2 — Системы уравнений\nДень 3 — Квадратные уравнения\nДень 4 — Дискриминант (слабое место)\n…\nДень 30 — Пробный экзамен\n\nСлабые темы по профилю будут встречаться чаще. Открой раздел «План», чтобы отметить дни.`,
-        opts.locale
-      ),
+      content: localize(plan, opts.locale),
       meta: { topic, subject: subjectId },
     };
   }
@@ -275,51 +396,42 @@ export function buildTutorReply(opts: {
     };
   }
 
-  const who = opts.profile?.name?.trim().split(/\s+/)[0];
-  const weak = opts.profile?.weakTopics?.includes(topic);
-  const base = [
-    who ? `${who}, разберём это с твоего уровня.` : "Разберём это с твоего уровня.",
-    `Шаг 1. Возможно, ещё не закреплено: ${weak ? "дискриминант и знак D" : "роль коэффициента a"}.`,
-    `Шаг 2. ${pack.zero}`,
-    `Шаг 3. ${pack.example}`,
-    `Шаг 4. ${pack.together}`,
-    `Шаг 5. ${pack.task}`,
-    `Шаг 6. Когда напишешь ответ — проверю.`,
-    `Шаг 7. Если ошибёшься, разберём причину, а не просто скажем «неправильно».`,
-    `Шаг 8. После нескольких заданий оценим, усвоена ли идея.`,
-    `\n🧠 Когда будешь готов: хочешь пройти мини-тест из 5 вопросов?`,
-  ].join("\n\n");
+  const weak = topic ? opts.profile?.weakTopics?.includes(topic) : false;
+  const styleKey: ExplainStyle = opts.style === "teacher" || opts.style === "detailed" ? opts.style : "simple";
+  const linear = topic === "linear-eq" ? solveLinearPlain(opts.text) : "";
+  if (linear) {
+    return {
+      content: localize(linear, opts.locale),
+      meta: { topic, subject: subjectId, style: styleKey, quizPrompt: false },
+    };
+  }
+  const base = [pack.zero, pack.example, pack.together].join("\n\n");
 
-  const styled = STYLES[opts.style](base);
+  const styled = STYLES[styleKey](base);
 
   return {
     content: localize(styled, opts.locale),
     meta: {
-      topic: pack.title,
+      topic,
       subject: subjectId,
-      style: opts.style,
+      style: styleKey,
       understanding: weak ? 48 : 72,
-      formula: topic === "quadratic" ? "x_{1,2}=\\dfrac{-b\\pm\\sqrt{D}}{2a}" : undefined,
+      formula: topic === "quadratic" ? "x_{1,2}=\\dfrac{-b\\pm\\sqrt{D}}{2a}" : topic === "newton" ? "F=ma" : topic === "ohm" ? "I=\\dfrac{U}{R}" : undefined,
       steps: [
-        { title: "С нуля", body: pack.zero },
+        { title: "Простыми словами", body: pack.zero },
         { title: "Пример", body: pack.example },
-        { title: "Вместе", body: pack.together },
-        { title: "Твоя задача", body: pack.task },
+        { title: "Главное", body: pack.together },
+        { title: "Проверка", body: pack.task },
       ],
-      quizPrompt: true,
+      quizPrompt: false,
     },
   };
 }
 
 export function evaluateStudentAnswer(text: string, topicId?: string) {
-  const t = text.trim().toLowerCase().replace(/\s/g, "");
   const pack = topicId ? TOPICS[topicId] : undefined;
-  if (!pack?.answer) {
-    return {
-      ok: /да|верно|2\s*,\s*3|-3|хлоропласт|goes|3/.test(text.toLowerCase()),
-      explanation: "Сверяю ход решения, а не только финальную строку.",
-    };
-  }
+  if (!pack?.answer) return null;
+  const t = text.trim().toLowerCase().replace(/\s/g, "");
   const ans = pack.answer.toLowerCase().replace(/\s/g, "");
   const ok = t.includes(ans.replace(/,/g, "")) || t.includes(ans) || text.toLowerCase().includes(pack.answer.toLowerCase());
   return {
@@ -404,11 +516,14 @@ export function essayReview(text: string) {
   };
 }
 
-export const SYSTEM_PROMPT = `You are SMART SCHOOL AI, a personal tutor inside a school product.
-Always address the student by the name from their profile. Never invent a name and never call them Alisher unless that is exactly their profile name.
-Never dump final homework answers first. Propose to solve together.
-Detect gaps, explain from zero, give an example, solve together, give a similar task, check, explain the cause of mistakes, then assess understanding.
-Adapt to the student's profile, weak topics, explain style, and lesson language.
-If the student wants to solve alone, give graded hints only.
-If they say they don't understand, use a completely different analogy.
-Be a teacher, not a chatbot that finishes the work.`;
+export const SYSTEM_PROMPT = `You are Micro AI School, a personal AI tutor. Answer exactly like Gemini: direct, correct, short, useful.
+Reply in the student's lesson language (default Russian).
+Write normal words with spaces between them. Never glue words together.
+
+Hard rules:
+- Answer the latest question immediately. Give the result. No warm-up, no "давай проверим".
+- Do not ask a follow-up or quiz question unless the student explicitly asks to be tested.
+- Do not say "напиши", "попробуй сам", "твоя очередь" unless they asked for practice.
+- Do not start with greetings. Do not invent a name. Never say Alisher, Алишер, Нигара, Нигора or Nigara.
+- Stay on the asked subject. Physics stays physics. Math stays math.
+- Keep it brief: idea, one example, the answer. You may use simple **bold** and short lists.`;

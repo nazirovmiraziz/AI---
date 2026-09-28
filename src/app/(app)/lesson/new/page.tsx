@@ -18,7 +18,8 @@ export default function NewLessonPage() {
 
   return (
     <div className="max-w-lg space-y-4">
-      <h1 className="font-serif text-4xl">AI создаёт урок</h1>
+      <h1 className="font-serif text-4xl">Собрать урок</h1>
+      <p className="text-sm text-[var(--muted)]">Выберите предмет и тему — откроется готовый урок из библиотеки.</p>
       <label className="block text-sm">
         Предмет
         <select className="mt-1 w-full rounded-xl border border-[var(--line)] px-3 py-2 bg-transparent" value={subject} onChange={(e) => {
