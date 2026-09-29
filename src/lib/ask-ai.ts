@@ -3,6 +3,7 @@ import { chatErrorCopy, compactAiHistory, studentContext } from "./ai/context";
 import { firstName, stripFakeNames } from "./cabinet";
 import { DEMO_EMAIL } from "./demo-data";
 import type { AiMode, ChatMessage, ExplainStyle, Locale, StudentProfile } from "./types";
+import { extractAvatarTag, toReaction, type AvatarReaction } from "@/components/avatar/protocol";
 
 function safeProfile(profile: StudentProfile | null): StudentProfile | null {
   if (!profile) return null;
@@ -25,7 +26,7 @@ export async function askAi(opts: {
   fallbackText: string;
   mode?: AiMode;
   signal?: AbortSignal;
-}): Promise<{ content: string; demo: boolean; error?: string; meta?: ChatMessage["meta"] }> {
+}): Promise<{ content: string; demo: boolean; error?: string; meta?: ChatMessage["meta"]; avatar?: AvatarReaction | null }> {
   const local = () =>
     buildTutorReply({
       text: opts.fallbackText,
@@ -71,7 +72,12 @@ export async function askAi(opts: {
         meta: pack.meta,
       };
     }
-    return { content: stripFakeNames(String(data.content || ""), safeName(opts.profile)), demo: false };
+    const tagged = extractAvatarTag(String(data.content || ""));
+    return {
+      content: stripFakeNames(tagged.content, safeName(opts.profile)),
+      demo: false,
+      avatar: toReaction(data.avatar) ?? tagged.reaction,
+    };
   } catch (e) {
     if (opts.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
       return { content: "", demo: false, error: "stopped" };

@@ -29,18 +29,18 @@ void main(){
   col=mix(col,sky,0.16*exp(-length(p-mp)*2.6));
   col=mix(col,vec3(0.72,0.84,1.0),0.22*exp(-length(p-vec2(a*0.85,0.85))*1.8));
 
-  for(int i=0;i<5;i++){
+  for(int i=0;i<8;i++){
     float fi=float(i);
-    float sp=0.22+fi*0.07;
-    float y=0.3+fi*0.085
-      +0.055*sin(p.x*(1.3+fi*0.35)+t*sp+fi*1.9)
-      +0.025*sin(p.x*(3.2-fi*0.2)-t*(sp*1.6)+fi)
+    float sp=0.2+mod(fi,4.0)*0.07;
+    float y=0.07+fi*0.125
+      +0.05*sin(p.x*(1.3+mod(fi,4.0)*0.35)+t*sp+fi*1.9)
+      +0.022*sin(p.x*(3.2-mod(fi,4.0)*0.2)-t*(sp*1.6)+fi)
       +0.03*(m.y-0.5)*sin(p.x*2.1+t*0.5+fi);
     float d=uv.y-y;
-    vec3 wc=mix(deep,ice,fi/4.0);
-    float fill=smoothstep(0.015,-0.32,d);
-    col=mix(col,wc,fill*(0.2-fi*0.02));
-    float line=exp(-abs(d)*(170.0-fi*18.0));
+    vec3 wc=mix(deep,ice,fi/7.0);
+    float fill=smoothstep(0.015,-0.3,d);
+    col=mix(col,wc,fill*(0.15-fi*0.013));
+    float line=exp(-abs(d)*max(80.0,170.0-fi*12.0));
     col=mix(col,vec3(1.0),line*0.6);
     col=mix(col,wc,exp(-abs(d-0.004)*380.0)*0.45);
   }

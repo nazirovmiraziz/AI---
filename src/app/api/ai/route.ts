@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { MODE_INSTRUCTIONS } from "@/lib/ai/modes";
 import { SYSTEM_PROMPT } from "@/lib/ai-engine";
 import type { AiMode } from "@/lib/types";
+import { AVATAR_TAG_INSTRUCTION, extractAvatarTag } from "@/components/avatar/protocol";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -30,7 +31,15 @@ Explain style: ${body.style ?? "simple"}
 Lesson language: ${body.lessonLanguage ?? "ru"}
 Hint-only: ${!!body.hintOnly}
 Latest student message: ${lastUser.slice(0, 500)}
-Answer the asked question directly and briefly, like Gemini. Give the answer. Do not ask a question back unless they asked to be tested.`;
+Answer the asked question directly and briefly, like Gemini. Give the answer. Do not ask a question back unless they asked to be tested.${mode === "quiz" ? "" : `\n\n${AVATAR_TAG_INSTRUCTION}`}`;
+}
+
+async function withAvatar(res: Response, mode: unknown) {
+  if (mode === "quiz" || !res.ok) return res;
+  const data = await res.clone().json().catch(() => null);
+  if (!data || typeof data.content !== "string") return res;
+  const { content, reaction } = extractAvatarTag(data.content);
+  return NextResponse.json({ ...data, content, avatar: reaction ?? data.avatar ?? null }, { status: res.status });
 }
 
 export async function POST(req: NextRequest) {
@@ -52,7 +61,7 @@ export async function POST(req: NextRequest) {
       });
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        if (data) return NextResponse.json(data);
+        if (data) return withAvatar(NextResponse.json(data), body.mode);
       }
     } catch {
       /* fall through to local providers */
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
             ? await askYandex(yandexKey, body, messages, image, controller.signal)
             : await askOpenAiCompatible(openaiKey, "https://api.openai.com/v1/chat/completions", process.env.OPENAI_MODEL || "gpt-4o-mini", body, messages, image, controller.signal);
       clearTimeout(timer);
-      return result;
+      return withAvatar(result, body.mode);
     } catch (e) {
       clearTimeout(timer);
       const aborted = e instanceof Error && e.name === "AbortError";

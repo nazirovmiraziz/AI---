@@ -21,6 +21,15 @@ import type { BotMood } from "@/components/TutorBot";
 import { firstName, stripFakeNames } from "@/lib/cabinet";
 import { useChatViewport } from "@/lib/use-chat-viewport";
 import type { AiMode } from "@/lib/types";
+import { TutorAvatarPanel } from "@/components/avatar/TutorAvatarPanel";
+import { getAvatar } from "@/components/avatar/AvatarController";
+import {
+  avatarOnError,
+  avatarOnReply,
+  avatarOnUserMessage,
+  inferReaction,
+  useChatAvatarBridge,
+} from "@/components/avatar/ChatAvatarBridge";
 
 const QUICK = [
   { id: "math", label: "Квадратные уравнения", prompt: "Объясни квадратные уравнения простыми словами. Коротко и по делу." },
@@ -80,6 +89,8 @@ function TutorInner() {
   const [editId, setEditId] = useState<string | null>(null);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [voiceAuto, setVoiceAuto] = useState(false);
+  const voiceAutoRef = useRef(false);
   const endRef = useRef<HTMLDivElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -133,6 +144,27 @@ function TutorInner() {
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
 
   useChatViewport(feedRef);
+  useChatAvatarBridge({
+    busy,
+    streaming: !!streamId,
+    listening,
+    speaking: speaking && !paused,
+    composing: input.trim().length > 0,
+  });
+
+  useEffect(() => {
+    const on = localStorage.getItem("ssai-voice-auto") === "1";
+    setVoiceAuto(on);
+    voiceAutoRef.current = on;
+  }, []);
+
+  function toggleVoiceAuto() {
+    const next = !voiceAuto;
+    setVoiceAuto(next);
+    voiceAutoRef.current = next;
+    localStorage.setItem("ssai-voice-auto", next ? "1" : "0");
+    if (!next) stopVoice();
+  }
 
   useEffect(() => {
     const feed = feedRef.current;
@@ -206,6 +238,7 @@ function TutorInner() {
     if (areaRef.current) areaRef.current.style.height = "auto";
     setBusy(true);
     setVoiceErr("");
+    avatarOnUserMessage(content);
     const mid = appendMessage(id, { role: "assistant", content: "", meta: { status: "thinking" } });
     const tagged = subjectTag(content || "Разбери вложение");
     const history = [
@@ -239,10 +272,12 @@ function TutorInner() {
       }
       const last = conv?.messages.filter((m) => m.role === "assistant").slice(-1)[0];
       let extra = "";
+      let evalOk: boolean | null = null;
       if (last?.meta?.quizPrompt) {
         const topicId = typeof last.meta.topic === "string" ? last.meta.topic : undefined;
         const ev = evaluateStudentAnswer(content, topicId);
         if (ev) {
+          evalOk = ev.ok;
           extra = `\n\n${ev.ok ? "✅ " : "⚠️ "}${ev.explanation}`;
           if (ev.ok) {
             addXp(XP_REWARDS.task, "Решена задача");
@@ -251,12 +286,17 @@ function TutorInner() {
         }
       }
       if (res.error) {
+        avatarOnError();
         patchMessage(id, mid, { content: res.content || t(loc, "tutor.fail"), meta: { ...res.meta, status: "error", error: res.error } });
       } else {
-        await reveal(id, mid, (res.content || t(loc, "tutor.fail")) + extra, res.meta);
+        const full = (res.content || t(loc, "tutor.fail")) + extra;
+        avatarOnReply(evalOk !== null ? inferReaction(content, full, evalOk) : res.avatar ?? inferReaction(content, full));
+        await reveal(id, mid, full, res.meta);
+        if (voiceAutoRef.current && !stopRef.current) startSpeech(full);
       }
       unlockAchievement("first-topic");
     } catch {
+      avatarOnError();
       patchMessage(id, mid, { content: t(loc, "tutor.fail"), meta: { status: "error" } });
     }
     setBusy(false);
@@ -327,22 +367,38 @@ function TutorInner() {
     }
     if (speaking && !paused) {
       window.speechSynthesis.pause();
+      getAvatar().speechEnd();
       setPaused(true);
       return;
     }
     if (speaking && paused) {
       window.speechSynthesis.resume();
+      getAvatar().setMode("speaking");
       setPaused(false);
       return;
     }
+    startSpeech(text);
+  }
+
+  function startSpeech(text: string) {
+    if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(stripFakeNames(text, who).replace(/\s+/g, " ").slice(0, 500));
+    const spoken = stripFakeNames(text, who)
+      .replace(/[*_#`>$\\]/g, "")
+      .replace(/\s+/g, " ")
+      .slice(0, 500);
+    const u = new SpeechSynthesisUtterance(spoken);
     u.lang = user?.language === "en" ? "en-US" : "ru-RU";
+    const avatar = getAvatar();
+    u.onstart = () => avatar.speechStart(spoken, u.rate || 1);
+    u.onboundary = (e) => avatar.speechBoundary(e.charIndex);
     u.onend = () => {
+      avatar.speechEnd();
       setSpeaking(false);
       setPaused(false);
     };
     u.onerror = () => {
+      avatar.speechEnd();
       setSpeaking(false);
       setPaused(false);
     };
@@ -353,6 +409,7 @@ function TutorInner() {
 
   function stopVoice() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    getAvatar().speechEnd();
     setSpeaking(false);
     setPaused(false);
   }
@@ -374,7 +431,7 @@ function TutorInner() {
           : "На связи";
 
   return (
-    <div className="chat-studio gpt-chat with-bot">
+    <div className="chat-studio gpt-chat">
       <aside className={`chat-rail chat-rail-list flex-col ${mobileChats ? "open" : ""}`}>
         <div className="p-3 sm:p-4">
           <Button className="w-full" onClick={() => { addConversation(); setMobileChats(false); }}>
@@ -431,7 +488,10 @@ function TutorInner() {
 
       {mobileChats && <button type="button" className="chat-dim chat-mobile-only" aria-label="Закрыть" onClick={() => setMobileChats(false)} />}
 
-      <section className="chat-stage">
+      <section className="chat-stage has-avatar">
+        <div className="avatar-stage">
+        <TutorAvatarPanel voiceOn={voiceAuto} onToggleVoice={toggleVoiceAuto} />
+        <div className="avatar-stage-main">
         <div className="gpt-top">
           <button type="button" className="chat-mobile-only gpt-top-btn" onClick={() => setMobileChats(true)}>
             Чаты
@@ -619,12 +679,9 @@ function TutorInner() {
           <input ref={fileRef} type="file" accept="image/*,.pdf,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
         </form>
+        </div>
+        </div>
       </section>
-
-      <aside className="tutor-side" aria-hidden>
-        <TutorBot size="lg" mood={botMood} />
-        <p>{status}</p>
-      </aside>
 
       <ConfirmDialog
         open={!!confirmDelete}

@@ -1,5 +1,6 @@
 import { askAi } from "../ask-ai";
 import type { AiMode, ChatMessage, ExplainStyle, Locale, StudentProfile } from "../types";
+import type { AvatarReaction } from "@/components/avatar/protocol";
 
 export async function askSchoolAi(opts: {
   messages: { role: string; content: string }[];
@@ -11,7 +12,7 @@ export async function askSchoolAi(opts: {
   fallbackText: string;
   mode?: AiMode;
   signal?: AbortSignal;
-}): Promise<{ content: string; demo: boolean; error?: string; meta?: ChatMessage["meta"] }> {
+}): Promise<{ content: string; demo: boolean; error?: string; meta?: ChatMessage["meta"]; avatar?: AvatarReaction | null }> {
   return askAi({
     messages: opts.messages,
     profile: opts.profile,
