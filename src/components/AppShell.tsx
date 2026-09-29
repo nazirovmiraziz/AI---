@@ -34,6 +34,7 @@ import { peekSession, useApp } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import type { Locale } from "@/lib/types";
 import { levelFromXp } from "@/lib/demo-data";
+import { ensureLangSchool } from "@/lib/lang/progress";
 import { ProgressBar } from "./ProgressBar";
 
 const PRIMARY = [
@@ -92,7 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated || !user) return;
     const free = pathname.startsWith("/learn/start") || pathname.startsWith("/learn/placement");
-    if (!user.langSchool?.onboarded && !free && pathname.startsWith("/learn")) {
+    if (!ensureLangSchool(user.langSchool).onboarded && !free && pathname.startsWith("/learn")) {
       router.replace("/learn/start");
     }
   }, [hydrated, user, pathname, router]);
@@ -322,7 +323,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="app-dock" aria-label="Главное меню">
         {MOBILE.map((item) => {
           const Icon = item.icon;
-          const active = item.href === "/learn" ? pathname === "/learn" : pathname.startsWith(item.href);
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}

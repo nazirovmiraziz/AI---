@@ -34,7 +34,7 @@ export function SiteFrame({ children }: { children: React.ReactNode }) {
   const signed = Boolean(user && user.email.toLowerCase() !== DEMO_EMAIL);
   const [scrolled, setScrolled] = useState(false);
 
-  const home = path === "/" || path === "/privacy" || path === "/terms" || path === "/how" || path === "/method" || path === "/program";
+  const home = path === "/" || path === "/privacy" || path === "/terms" || path === "/how" || path === "/method" || path === "/program" || path === "/install";
 
   useEffect(() => {
     const root = document.documentElement;

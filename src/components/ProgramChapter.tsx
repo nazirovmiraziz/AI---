@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowRight, Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { KnowledgeFlow, type FlowSubject } from "@/components/KnowledgeFlow";
 import { PageTurn } from "@/components/PageTurn";
+import { PageHero } from "@/components/PageHero";
+import { Reveal } from "@/components/Reveal";
+import { SpotlightCard } from "@/components/SpotlightCard";
 import { useApp } from "@/lib/store";
 import { DEMO_EMAIL } from "@/lib/demo-data";
 import { SUBJECTS } from "@/lib/subjects";
@@ -30,6 +34,9 @@ const GLYPH: Record<string, string> = {
   english: "Aa",
   russian: "Аа",
   tajik: "Тоҷ",
+  chinese: "中",
+  korean: "한",
+  arabic: "ع",
 };
 
 const SUBJ_FLOW: Record<string, FlowSubject> = {
@@ -40,6 +47,16 @@ const SUBJ_FLOW: Record<string, FlowSubject> = {
   english: "english",
   cs: "cs",
 };
+
+const CYCLE: { id: FlowSubject; label: string }[] = [
+  { id: "mix", label: "Все предметы" },
+  { id: "math", label: "Математика" },
+  { id: "physics", label: "Физика" },
+  { id: "chemistry", label: "Химия" },
+  { id: "biology", label: "Биология" },
+  { id: "english", label: "Английский" },
+  { id: "cs", label: "Информатика" },
+];
 
 const PATH = [
   { t: "Алфавит", s: "done" as const },
@@ -68,68 +85,112 @@ function topicsWord(n: number) {
 export function ProgramChapter() {
   const { user, hydrated } = useApp();
   const guest = !hydrated || !user || user.email.toLowerCase() === DEMO_EMAIL;
-  const [flow, setFlow] = useState<FlowSubject>("mix");
+  const [hover, setHover] = useState<{ id: FlowSubject; label: string } | null>(null);
+  const [auto, setAuto] = useState(0);
   const gate = (href: string) => (guest ? "/register" : href);
 
-  return (
-    <div className="land program-page">
-      <header className="land-hero program-hero">
-        <div className="land-copy">
-          <p className="land-eye">Предметы и языки</p>
-          <h1>Всё, что проходят в школе.</h1>
-          <p className="land-lead">Наведи на предмет — поле знаний покажет, с чем будешь работать. Прогресс считается только в твоём аккаунте.</p>
-        </div>
-        <div className="land-stage">
-          <KnowledgeFlow size="md" subject={flow} />
-        </div>
-      </header>
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setAuto((n) => (n + 1) % CYCLE.length), 2600);
+    return () => window.clearInterval(id);
+  }, []);
 
-      <section className="land-sec" id="subjects">
-        <div className="land-grid subj">
-          {SUBJECTS.map((s) => {
+  const flow = hover?.id ?? CYCLE[auto].id;
+  const flowLabel = hover?.label ?? CYCLE[auto].label;
+
+  return (
+    <div className="land land-v2 program-page">
+      <PageHero
+        chip="Предметы и языки"
+        words={["Всё,", "что", "проходят", { t: "в школе", grad: true }]}
+        lead="Математика, науки, история и языки — в одном репетиторе. Прогресс считается только в твоём аккаунте."
+        stage={
+          <div className="program-stage">
+            <KnowledgeFlow size="lg" subject={flow} />
+            <p className="v2-caption" key={flowLabel}>
+              <b>Поле знаний</b> {flowLabel}
+            </p>
+          </div>
+        }
+      >
+        <Button href="#subjects">
+          Выбрать предмет <ArrowRight size={16} aria-hidden />
+        </Button>
+        <Button variant="ai" href="#languages">
+          Языки
+        </Button>
+      </PageHero>
+
+      <section className="v2-sec" id="subjects">
+        <Reveal>
+          <p className="land-eye">Школьные предметы</p>
+          <h2 className="display-h2">
+            Наведи — <span className="grad-text">поле ответит.</span>
+          </h2>
+        </Reveal>
+        <div className="v2-subj">
+          {SUBJECTS.map((s, i) => {
             const hard = s.topics.some((x) => x.difficulty === "hard") ? "Сложнее" : s.topics.some((x) => x.difficulty === "medium") ? "Средне" : "Основа";
             const prog = !guest && user ? user.subjectLevels[s.id] ?? 0 : 0;
             const n = s.topics.length;
+            const name = t("ru", `subject.${s.id}`);
+            const f = { id: SUBJ_FLOW[s.id] ?? "mix", label: name };
             return (
-              <Link
-                key={s.id}
-                href={gate(`/subjects/${s.id}`)}
-                className="land-card subj-card"
-                onMouseEnter={() => setFlow(SUBJ_FLOW[s.id] ?? "mix")}
-                onMouseLeave={() => setFlow("mix")}
-                onFocus={() => setFlow(SUBJ_FLOW[s.id] ?? "mix")}
-                onBlur={() => setFlow("mix")}
-              >
-                <b className="subj-glyph" aria-hidden>{GLYPH[s.id] ?? "✦"}</b>
-                <h3>{t("ru", `subject.${s.id}`)}</h3>
-                <p>{n} {topicsWord(n)} · {hard}</p>
-                <span className="land-bar" style={{ width: `${Math.max(4, prog)}%` }} aria-hidden />
-                <em>{guest ? "После входа" : `${prog}%`}</em>
-              </Link>
+              <Reveal key={s.id} delay={Math.min(i * 60, 360)}>
+                <Link
+                  href={gate(`/subjects/${s.id}`)}
+                  className="v2-subj-link"
+                  onMouseEnter={() => setHover(f)}
+                  onMouseLeave={() => setHover(null)}
+                  onFocus={() => setHover(f)}
+                  onBlur={() => setHover(null)}
+                >
+                  <SpotlightCard className="bento-card v2-subj-card">
+                    <b className="v2-glyph" aria-hidden>{GLYPH[s.id] ?? "✦"}</b>
+                    <h3>{name}</h3>
+                    <p>
+                      {n} {topicsWord(n)} · {hard}
+                    </p>
+                    <span className="v2-meter" aria-hidden>
+                      <i style={{ width: `${Math.max(4, prog)}%` }} />
+                    </span>
+                    <em>{guest ? "После входа" : `${prog}%`}</em>
+                  </SpotlightCard>
+                </Link>
+              </Reveal>
             );
           })}
         </div>
       </section>
 
-      <section className="land-sec" id="languages">
-        <h2>Языки</h2>
-        <p className="land-sub">Языковая школа с картами A1–C1. Таджикский также живёт в школьных предметах.</p>
-        <div className="lang-row">
-          {LANGS.map((l) => (
-            <Link key={l.hello} href={gate(l.href)} className="lang-tile" dir={l.rtl ? "rtl" : "ltr"}>
-              <span className="lang-hello">{l.hello}</span>
-              <span>{l.name}</span>
-            </Link>
+      <section className="v2-sec" id="languages">
+        <Reveal>
+          <p className="land-eye">Языковая школа</p>
+          <h2 className="display-h2">
+            Шесть языков. <span className="grad-text">A1{"\u00a0→\u00a0"}C1.</span>
+          </h2>
+          <p className="land-sub">Карта уровней, диалоги и тесты. Таджикский есть и в школьных предметах.</p>
+        </Reveal>
+        <div className="lang-row v2-langs">
+          {LANGS.map((l, i) => (
+            <Reveal key={l.hello} delay={i * 70}>
+              <Link href={gate(l.href)} className="lang-tile" dir={l.rtl ? "rtl" : "ltr"}>
+                <span className="lang-hello">{l.hello}</span>
+                <span>{l.name}</span>
+              </Link>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      <section className="land-split" id="progress">
-        <div>
+      <section className="duo v2-progress" id="progress">
+        <Reveal>
           <p className="land-eye">Прогресс</p>
-          <h2>Видно, куда идёшь.</h2>
-          <p className="land-sub">Серия дней, XP и слабые темы — в кабинете. Здесь пример пути, не чужие цифры.</p>
-          <ol className="land-path">
+          <h2 className="display-h2">
+            Видно, <span className="grad-text">куда идёшь.</span>
+          </h2>
+          <p className="land-sub">Серия дней, XP и слабые темы — в кабинете. Здесь пример пути.</p>
+          <ol className="land-path v2-path">
             {PATH.map((p) => (
               <li key={p.t} className={p.s}>
                 <span>{p.s === "done" ? "✓" : p.s === "now" ? "●" : "○"}</span>
@@ -137,16 +198,24 @@ export function ProgramChapter() {
               </li>
             ))}
           </ol>
-          <Button href={gate("/learn")} variant="secondary">Открыть карту</Button>
-        </div>
-        <div className="land-faq">
-          {FAQ.map((item) => (
-            <details key={item.q} className="land-card">
-              <summary>{item.q}</summary>
-              <p>{item.a}</p>
-            </details>
-          ))}
-        </div>
+          <div className="land-cta">
+            <Button href={gate("/learn")} variant="ai">Открыть карту</Button>
+          </div>
+        </Reveal>
+        <Reveal delay={120}>
+          <div className="land-faq v2-faq">
+            <p className="land-eye">Частые вопросы</p>
+            {FAQ.map((item) => (
+              <details key={item.q}>
+                <summary>
+                  {item.q}
+                  <Plus size={16} aria-hidden />
+                </summary>
+                <p>{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </Reveal>
       </section>
 
       <PageTurn id="program" />

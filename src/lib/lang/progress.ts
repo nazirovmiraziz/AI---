@@ -2,19 +2,68 @@ import type { CefrLevel, LanguageSchoolState, LanguageTrack, LearnLangId, LearnR
 import { CEFR_ORDER, emptyDaily, emptyLangSchool, emptyTrack } from "./types";
 import { allUnits, findLesson, firstLessonId, nextLessonId } from "./curriculum";
 import { selfToCefr } from "./placement";
+import { LEARN_LANGUAGES } from "./catalog";
 
 export function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const LANG_IDS = new Set<string>(LEARN_LANGUAGES.map((l) => l.id));
+const list = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const dict = <T,>(v: unknown): Record<string, T> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, T>) : {});
+
+function normalizeTrack(id: LearnLangId, raw: Partial<LanguageTrack>): LanguageTrack {
+  const cefr = CEFR_ORDER.includes(raw.cefr as CefrLevel) ? (raw.cefr as CefrLevel) : "A1";
+  const dailyMinutes = typeof raw.dailyMinutes === "number" && raw.dailyMinutes > 0 ? raw.dailyMinutes : 15;
+  const base = emptyTrack({
+    languageId: id,
+    reason: raw.reason ?? "speak",
+    selfLevel: raw.selfLevel ?? "zero",
+    cefr,
+    dailyMinutes,
+    daysPerWeek: typeof raw.daysPerWeek === "number" ? raw.daysPerWeek : 7,
+  });
+  const unlocked = list<string>(raw.unlockedLessons);
+  const daily = raw.daily && typeof raw.daily === "object" && typeof raw.daily.date === "string" ? { ...emptyDaily(dailyMinutes), ...raw.daily } : emptyDaily(dailyMinutes);
+  return {
+    ...base,
+    ...raw,
+    languageId: id,
+    cefr,
+    dailyMinutes,
+    completedLessons: list(raw.completedLessons),
+    completedUnits: list(raw.completedUnits),
+    completedLevels: list(raw.completedLevels),
+    unlockedLessons: unlocked.length ? unlocked : unlockForCefr(id, cefr),
+    lessonAccuracy: dict(raw.lessonAccuracy),
+    vocab: dict(raw.vocab),
+    skills: { ...base.skills, ...dict<number>(raw.skills) },
+    unitScores: dict(raw.unitScores),
+    daily,
+    certificates: list(raw.certificates),
+    weakTags: list(raw.weakTags),
+    strongTags: list(raw.strongTags),
+    chat: list(raw.chat),
+  };
+}
+
 export function ensureLangSchool(raw?: LanguageSchoolState | null): LanguageSchoolState {
-  if (!raw) return emptyLangSchool();
+  if (!raw || typeof raw !== "object") return emptyLangSchool();
+  const tracks: LanguageSchoolState["tracks"] = {};
+  for (const [id, t] of Object.entries(dict<Partial<LanguageTrack>>(raw.tracks))) {
+    if (!LANG_IDS.has(id) || !t || typeof t !== "object") continue;
+    tracks[id as LearnLangId] = normalizeTrack(id as LearnLangId, t);
+  }
+  const ids = Object.keys(tracks) as LearnLangId[];
+  const activeLanguage = raw.activeLanguage && tracks[raw.activeLanguage] ? raw.activeLanguage : ids[0] ?? null;
   return {
     ...emptyLangSchool(),
     ...raw,
-    tracks: raw.tracks ?? {},
+    onboarded: Boolean(raw.onboarded && activeLanguage),
+    activeLanguage,
+    tracks,
     hearts: typeof raw.hearts === "number" ? raw.hearts : 5,
-    coins: raw.coins ?? 0,
+    coins: typeof raw.coins === "number" ? raw.coins : 0,
   };
 }
 

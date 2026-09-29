@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useLangSchool } from "@/lib/lang/use-school";
 import { LEARN_LANGUAGES } from "@/lib/lang/catalog";
 import { allUnits } from "@/lib/lang/curriculum";
@@ -8,6 +9,7 @@ import { EmptyLearn } from "@/components/lang/bits";
 
 export default function LanguagesPage() {
   const { ls, lang, switchLang, track } = useLangSchool();
+  const router = useRouter();
   const ids = Object.keys(ls.tracks) as (keyof typeof ls.tracks)[];
   if (!ls.onboarded) {
     return <EmptyLearn title="Выбери язык, чтобы начать" text="Можно учиться нескольким языкам по очереди." href="/learn/start" cta="Выбрать язык" />;
@@ -26,7 +28,10 @@ export default function LanguagesPage() {
             <button
               key={id}
               type="button"
-              onClick={() => switchLang(id)}
+              onClick={() => {
+                switchLang(id);
+                router.push("/learn");
+              }}
               className={`panel-card p-5 text-left ${lang === id ? "ring-2 ring-[#2f6bff]" : ""}`}
             >
               <p className="text-2xl">{meta.flag}</p>
@@ -34,6 +39,7 @@ export default function LanguagesPage() {
               <p className="text-sm text-[var(--muted)]">
                 {t.cefr} · {pct}%
               </p>
+              <p className="mt-2 text-sm font-medium text-[#2f6bff]">{lang === id ? "Продолжить →" : "Переключиться →"}</p>
             </button>
           );
         })}

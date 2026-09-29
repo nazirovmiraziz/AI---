@@ -19,6 +19,7 @@ import { TutorBot } from "@/components/TutorBot";
 import { VoiceWave } from "@/components/VoiceWave";
 import type { BotMood } from "@/components/TutorBot";
 import { firstName, stripFakeNames } from "@/lib/cabinet";
+import { useChatViewport } from "@/lib/use-chat-viewport";
 import type { AiMode } from "@/lib/types";
 
 const QUICK = [
@@ -80,6 +81,7 @@ function TutorInner() {
   const [streamId, setStreamId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
@@ -130,8 +132,11 @@ function TutorInner() {
     .filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
 
+  useChatViewport(feedRef);
+
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "auto" });
+    const feed = feedRef.current;
+    if (feed) feed.scrollTop = feed.scrollHeight;
   }, [conv?.messages.length, busy, streamId]);
 
   function grow() {
@@ -462,7 +467,7 @@ function TutorInner() {
           ))}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto gpt-feed">
+        <div ref={feedRef} className="flex-1 min-h-0 overflow-y-auto gpt-feed">
           {(empty || onlyWelcome) && (
             <div className="gpt-hero">
               <TutorBot size="md" mood={botMood} />
@@ -567,6 +572,8 @@ function TutorInner() {
               ref={areaRef}
               value={input}
               rows={1}
+              enterKeyHint="send"
+              className="min-w-0 flex-1"
               onChange={(e) => { setInput(e.target.value); grow(); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -574,7 +581,7 @@ function TutorInner() {
                   send(input);
                 }
               }}
-              placeholder="Напиши вопрос репетитору…"
+              placeholder="Спроси репетитора…"
               aria-label="Сообщение"
             />
             <button

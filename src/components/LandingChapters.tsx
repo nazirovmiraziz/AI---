@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Check, Users, GraduationCap, BookOpen } from "lucide-react";
+import { ArrowRight, Camera, Check, Footprints, MessageSquare, Mic, Sparkles, Target, Users, GraduationCap, BookOpen } from "lucide-react";
 import { Button } from "@/components/Button";
 import { HomeLanding } from "@/components/HomeLanding";
+import { PageHero } from "@/components/PageHero";
 import { Reveal } from "@/components/Reveal";
 import { SpotlightCard } from "@/components/SpotlightCard";
 import { KnowledgeFlow } from "@/components/KnowledgeFlow";
@@ -19,6 +20,12 @@ const AUDIENCE = [
   { icon: BookOpen, t: "Ученик", d: "Разбор в любой момент, без стыда за «глупый» вопрос." },
   { icon: Users, t: "Учитель", d: "Не замена уроку: индивидуальная практика и след прогресса." },
   { icon: GraduationCap, t: "Родитель", d: "Система не пишет домашку за ребёнка. Видно, над чем работали." },
+];
+
+const PRINCIPLES = [
+  { icon: Target, t: "Один вопрос за раз", d: "Без стены текста. Короткий ход — и твоя очередь." },
+  { icon: Footprints, t: "Последний шаг — твой", d: "Подсказка не превращается в готовое решение." },
+  { icon: Check, t: "Ошибка — это данные", d: "Слабые темы возвращаются, пока не закрепятся." },
 ];
 
 function useStart() {
@@ -75,66 +82,144 @@ export function HowChapter() {
   }, []);
 
   return (
-    <div className="land how-page">
-      <header className="land-sec">
-        <p className="land-eye">Как идёт урок</p>
-        <h1>От вопроса до понимания</h1>
-        <p className="land-sub">Без готового ответа в начале. Репетитор ведёт, ты решаешь, AI проверяет.</p>
-      </header>
-      <div className="how-story">
-        <ol>
-          {steps.map((s, i) => (
-            <li
-              key={s.n}
-              ref={(el) => {
-                refs.current[i] = el;
-              }}
-              className={active === i ? "on" : ""}
-            >
-              <button type="button" onClick={() => setActive(i)}>
-                <span>{s.n}</span>
-                <strong>{s.t}</strong>
-                <p>{s.d}</p>
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="how-sticky">
-          <KnowledgeFlow size="lg" mood={steps[active].mood} />
+    <div className="land land-v2 how-page">
+      <PageHero
+        chip="Как идёт урок"
+        words={["От", "вопроса", { t: "к\u00a0пониманию", grad: true }]}
+        lead="Репетитор ведёт, ты решаешь, AI проверяет. Готового ответа в начале нет."
+        stage={<HowModes />}
+      >
+        <Button href="#demo">
+          Спросить сейчас <ArrowRight size={16} aria-hidden />
+        </Button>
+        <Button variant="ai" href="#steps">
+          Шесть шагов урока
+        </Button>
+      </PageHero>
+
+      <section className="v2-sec" id="steps">
+        <Reveal>
+          <p className="land-eye">Шесть ходов</p>
+          <h2 className="display-h2">
+            Один урок. <span className="grad-text">Твоя голова.</span>
+          </h2>
+          <p className="land-sub">Листай или нажимай шаг — поле знаний покажет, что происходит.</p>
+        </Reveal>
+        <div className="how-story v2-story">
+          <ol>
+            {steps.map((s, i) => (
+              <li
+                key={s.n}
+                ref={(el) => {
+                  refs.current[i] = el;
+                }}
+                className={active === i ? "on" : i < active ? "done" : ""}
+              >
+                <button type="button" onClick={() => setActive(i)} aria-pressed={active === i}>
+                  <span>{s.n}</span>
+                  <strong>{s.t}</strong>
+                  <p>{s.d}</p>
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="how-sticky v2-glass">
+            <KnowledgeFlow size="lg" mood={steps[active].mood} />
+            <p className="v2-caption" key={active}>
+              <b>{steps[active].n}</b> {steps[active].t}
+            </p>
+          </div>
         </div>
-      </div>
-      <section className="land-split">
-        <div>
-          <h2>Фото задачи, не готовый ответ</h2>
-          <p className="land-sub">Репетитор ведёт по шагам. Ответ появляется, когда ты его собрал.</p>
-          <ul className="mt-4 space-y-2 text-sm">
-            {["Сканируем область задачи", "Сначала подсказка без спойлера", "Проверка понимания"].map((x) => (
-              <li key={x} className="flex gap-2">
-                <Check size={16} className="text-[#0c9b78] mt-0.5" /> {x}
+      </section>
+
+      <section className="duo v2-photo">
+        <Reveal>
+          <p className="land-eye">Фото задачи</p>
+          <h2 className="display-h2">
+            Сфоткал. <span className="grad-text">Решаешь сам.</span>
+          </h2>
+          <p className="land-sub">Репетитор распознаёт условие и ведёт по шагам. Ответ появляется, когда ты его собрал.</p>
+          <ul className="v2-checks">
+            {["Распознаёт условие", "Подсказка без спойлера", "Проверка понимания"].map((x) => (
+              <li key={x}>
+                <Check size={16} aria-hidden /> {x}
               </li>
             ))}
           </ul>
-          <div className="mt-5">
-            <Button variant="secondary" onClick={() => start(undefined, "/photo")}>Открыть фото</Button>
+          <div className="land-cta">
+            <Button variant="ai" onClick={() => start(undefined, "/photo")}>
+              <Camera size={16} aria-hidden /> Открыть фото
+            </Button>
           </div>
-        </div>
-        <div className="photo-scan rounded-2xl border border-[var(--line)] bg-[#f7fbff] p-8 min-h-[180px] grid place-items-center">
-          <div className="text-center">
-            <Camera className="mx-auto text-[#3aa0e8]" />
-            <p className="font-mono mt-3 text-lg">2x + 5 = 17</p>
-            <p className="text-xs text-[var(--muted)] mt-2">распознано · шаг 1 из 4</p>
-          </div>
-        </div>
+        </Reveal>
+        <Reveal delay={120}>
+          <SpotlightCard className="v2-scan photo-scan">
+            <span className="v2-scan-corner tl" />
+            <span className="v2-scan-corner tr" />
+            <span className="v2-scan-corner bl" />
+            <span className="v2-scan-corner br" />
+            <Camera size={22} aria-hidden className="v2-scan-icon" />
+            <p className="v2-scan-eq">2x + 5 = 17</p>
+            <p className="v2-scan-meta">распознано · шаг 1 из 4</p>
+            <p className="v2-scan-hint">Что мешает x остаться одному?</p>
+          </SpotlightCard>
+        </Reveal>
       </section>
-      <section className="land-sec">
-        <p className="land-eye">Попробуй сейчас</p>
-        <h2>Живой ответ репетитора</h2>
-        <p className="land-sub">Настоящий запрос к AI — без регистрации.</p>
-        <div className="mt-5">
+
+      <section className="v2-sec v2-demo" id="demo">
+        <Reveal>
           <LiveTutorDemo />
-        </div>
+        </Reveal>
       </section>
+
       <PageTurn id="how" />
+    </div>
+  );
+}
+
+function HowModes() {
+  return (
+    <div className="how-modes" aria-hidden>
+      <div className="how-mode m1">
+        <span className="bento-orb">
+          <MessageSquare size={18} />
+        </span>
+        <div>
+          <small>Текст</small>
+          <p>Не понял прошлый урок про дроби</p>
+        </div>
+      </div>
+      <div className="how-mode m2">
+        <span className="bento-orb">
+          <Mic size={18} />
+        </span>
+        <div>
+          <small>Голос</small>
+          <p className="how-wave">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <i key={i} style={{ animationDelay: `${i * 70}ms` }} />
+            ))}
+          </p>
+        </div>
+      </div>
+      <div className="how-mode m3">
+        <span className="bento-orb">
+          <Camera size={18} />
+        </span>
+        <div>
+          <small>Фото</small>
+          <p className="font-mono">2x + 5 = 17</p>
+        </div>
+      </div>
+      <div className="how-mode m4">
+        <span className="bento-orb">
+          <Sparkles size={18} />
+        </span>
+        <div>
+          <small>Репетитор</small>
+          <p>Сначала: что мешает x остаться одному?</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -205,33 +290,87 @@ export function MethodChapter() {
     { t: "Оценивает понимание", d: "Тема закрыта или обратно в повтор.", mood: "happy" as BotMood },
   ];
   const [active, setActive] = useState(0);
+  const pct = ((active + 1) / steps.length) * 100;
   return (
-    <div className="land method-page">
-      <header className="land-sec">
-        <p className="land-eye">Метод</p>
-        <h1>Восемь шагов к пониманию</h1>
-        <p className="land-sub">Не ответ в чате — путь. Текущий шаг подсвечен. Поле знаний рядом.</p>
-      </header>
-      <div className="method-live">
-        <ol className="method-path">
-          {steps.map((s, i) => (
-            <li key={s.t} className={i === active ? "on" : i < active ? "done" : ""}>
-              <button type="button" onClick={() => setActive(i)}>
-                <span>{String(i + 1).padStart(2, "0")}</span>
-                <strong>{s.t}</strong>
-                <p>{s.d}</p>
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="method-bot">
-          <KnowledgeFlow size="lg" mood={steps[active].mood} />
-          <div className="method-nav">
-            <Button variant="secondary" disabled={active === 0} onClick={() => setActive((n) => Math.max(0, n - 1))}>Назад</Button>
-            <Button disabled={active === steps.length - 1} onClick={() => setActive((n) => Math.min(steps.length - 1, n + 1))}>Дальше</Button>
+    <div className="land land-v2 method-page">
+      <PageHero
+        chip="Метод"
+        words={["Восемь", { t: "шагов", grad: true }]}
+        sub="от пробела до понимания"
+        lead="Каждая тема проходит один и тот же путь. Ты не получаешь ответ — ты его собираешь."
+        after={
+          <div className="method-rail" aria-hidden>
+            {steps.map((s, i) => (
+              <span key={s.t} style={{ animationDelay: `${700 + i * 140}ms` }}>
+                <small>{String(i + 1).padStart(2, "0")}</small>
+              </span>
+            ))}
+          </div>
+        }
+      >
+        <Button href="#path">
+          Пройти путь <ArrowRight size={16} aria-hidden />
+        </Button>
+        <Button variant="ai" href="/register">
+          Начать учиться
+        </Button>
+      </PageHero>
+
+      <section className="v2-sec" id="path">
+        <Reveal>
+          <p className="land-eye">Интерактивный путь</p>
+          <h2 className="display-h2">
+            Нажимай шаги. <span className="grad-text">Смотри поле.</span>
+          </h2>
+        </Reveal>
+        <div className="method-live v2-story">
+          <ol className="method-path" style={{ ["--p" as string]: active / (steps.length - 1) }}>
+            {steps.map((s, i) => (
+              <li key={s.t} className={i === active ? "on" : i < active ? "done" : ""}>
+                <button type="button" onClick={() => setActive(i)} aria-pressed={i === active}>
+                  <span>{String(i + 1).padStart(2, "0")}</span>
+                  <strong>{s.t}</strong>
+                  <p>{s.d}</p>
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="method-bot v2-glass">
+            <p className="v2-step-count">
+              Шаг <b>{String(active + 1).padStart(2, "0")}</b> из {String(steps.length).padStart(2, "0")}
+            </p>
+            <span className="v2-meter" aria-hidden>
+              <i style={{ width: `${pct}%` }} />
+            </span>
+            <KnowledgeFlow size="lg" mood={steps[active].mood} />
+            <p className="v2-caption" key={active}>
+              <b>{steps[active].t}</b> {steps[active].d}
+            </p>
+            <div className="method-nav">
+              <Button variant="secondary" disabled={active === 0} onClick={() => setActive((n) => Math.max(0, n - 1))}>Назад</Button>
+              <Button disabled={active === steps.length - 1} onClick={() => setActive((n) => Math.min(steps.length - 1, n + 1))}>Дальше</Button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      <section className="bento v2-bento3">
+        {PRINCIPLES.map((p, i) => {
+          const Icon = p.icon;
+          return (
+            <Reveal key={p.t} delay={i * 90}>
+              <SpotlightCard className="bento-card">
+                <span className="bento-orb">
+                  <Icon size={20} aria-hidden />
+                </span>
+                <h3>{p.t}</h3>
+                <p>{p.d}</p>
+              </SpotlightCard>
+            </Reveal>
+          );
+        })}
+      </section>
+
       <PageTurn id="method" />
     </div>
   );

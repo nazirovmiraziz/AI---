@@ -109,12 +109,14 @@ export default function LearnHomePage() {
         </section>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[
           ["/learn/map", "Карта"],
           ["/learn/ai", "Репетитор"],
           ["/learn/vocab", "Слова"],
           ["/learn/talk", "Разговор"],
+          ["/learn/languages", "Мои языки"],
+          ["/learn/progress", "Прогресс"],
         ].map(([href, label]) => (
           <Link key={href} href={href} className="panel-card p-4 text-center text-sm font-medium">
             {label}
