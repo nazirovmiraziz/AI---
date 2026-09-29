@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope, IBM_Plex_Mono } from "next/font/google";
+import { Manrope, IBM_Plex_Mono, Unbounded } from "next/font/google";
 import { Providers } from "./providers";
 import { Toasts } from "@/components/Toasts";
 import { SkipLink } from "@/components/SkipLink";
@@ -10,6 +10,13 @@ const sans = Manrope({
   variable: "--font-sans",
   display: "swap",
   adjustFontFallback: false,
+});
+
+const display = Unbounded({
+  subsets: ["latin", "cyrillic"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
 });
 
 const mono = IBM_Plex_Mono({
@@ -78,7 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className={`${sans.variable} ${mono.variable} font-sans min-h-svh bg-[var(--bg)] text-[var(--text)]`}>
+      <body className={`${sans.variable} ${display.variable} ${mono.variable} font-sans min-h-svh bg-[var(--bg)] text-[var(--text)]`}>
         <SkipLink />
         <Providers>
           {children}

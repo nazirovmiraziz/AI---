@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Camera, Mic, Repeat, Sparkles } from "lucide-react";
@@ -10,18 +10,100 @@ import { DEMO_EMAIL } from "@/lib/demo-data";
 import { firstName } from "@/lib/cabinet";
 import { Logo } from "@/components/Logo";
 import { KnowledgeFlow } from "@/components/KnowledgeFlow";
-import { CursorGlow } from "@/components/CursorGlow";
 import { MagneticCta } from "@/components/MagneticCta";
 import { PageTurn } from "@/components/PageTurn";
+import { ShaderWave } from "@/components/ShaderWave";
+import { SpotlightCard } from "@/components/SpotlightCard";
+import { Reveal } from "@/components/Reveal";
+
+const WORDS = ["алгебру", "английский", "физику", "химию", "историю", "биологию"];
+
+const TAPE_A = ["x² + 5x = 14", "Present Simple", "F = ma", "H₂O", "√144 = 12", "Past Perfect", "πr²", "1812", "E = mc²", "sin²α + cos²α = 1"];
+const TAPE_B = ["ДНК", "a² + b² = c²", "I have been", "NaCl", "v = s / t", "Причастие", "log₂ 8 = 3", "Фотосинтез", "Zn + 2HCl", "¾ + ¼ = 1"];
+
+const STEPS = [
+  { who: "you", text: "Реши 2x + 5 = 17" },
+  { who: "ai", text: "Сначала: что мешает x остаться одному?" },
+  { who: "you", text: "Пятёрка. Убираю: 2x = 12" },
+  { who: "ai", text: "Верно. Последний шаг — твой." },
+  { who: "you", text: "x = 6" },
+  { who: "ai", text: "Точно. Тема закрыта ✓" },
+] as const;
 
 const FEATURES = [
-  { icon: Sparkles, t: "Персональный репетитор", d: "Помнит имя, класс, ошибки и текущий урок." },
-  { icon: Mic, t: "Голос", d: "Спроси вслух, если браузер умеет слушать." },
-  { icon: Camera, t: "Фото задачи", d: "Снимок домашки. Сначала шаг, не готовый ответ." },
-  { icon: Repeat, t: "Разбор ошибок", d: "То, что путал, возвращается, пока не закрепится." },
+  { icon: Sparkles, t: "Помнит тебя", d: "Имя, класс, ошибки и текущий урок." },
+  { icon: Mic, t: "Слышит голос", d: "Спроси вслух — ответит голосом." },
+  { icon: Camera, t: "Видит фото", d: "Снимок задачи. Сначала подсказка." },
+  { icon: Repeat, t: "Возвращает ошибки", d: "Пока тема не закрепится." },
 ];
 
 type Mood = "idle" | "listen" | "think" | "speak" | "happy" | "error";
+
+function RotatingWord() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setI((n) => (n + 1) % WORDS.length), 2200);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <span className="rot-word" aria-live="off">
+      <span key={WORDS[i]} className="rot-word-in grad-text">
+        {WORDS[i]}
+      </span>
+    </span>
+  );
+}
+
+function StepDemo() {
+  const [n, setN] = useState(1);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setN(STEPS.length);
+      return;
+    }
+    const id = window.setInterval(() => setN((k) => (k >= STEPS.length + 2 ? 1 : k + 1)), 1500);
+    return () => window.clearInterval(id);
+  }, []);
+  const shown = Math.min(n, STEPS.length);
+  return (
+    <div className="step-demo" aria-label="Пример урока">
+      <div className="step-demo-head">
+        <span className="step-dot" />
+        Пример урока
+        <span className="step-count">
+          {shown}/{STEPS.length}
+        </span>
+      </div>
+      <ol>
+        {STEPS.slice(0, shown).map((s, i) => (
+          <li key={i} className={`step-bubble ${s.who}`}>
+            {s.text}
+          </li>
+        ))}
+        {shown < STEPS.length && STEPS[shown].who === "ai" ? (
+          <li className="step-bubble ai typing" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </li>
+        ) : null}
+      </ol>
+    </div>
+  );
+}
+
+function Tape({ items, reverse }: { items: readonly string[]; reverse?: boolean }) {
+  return (
+    <div className={`tape ${reverse ? "rev" : ""}`} aria-hidden>
+      <div className="tape-track">
+        {[...items, ...items].map((x, i) => (
+          <span key={i}>{x}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function HomeLanding() {
   const router = useRouter();
@@ -45,30 +127,31 @@ export function HomeLanding() {
   }
 
   return (
-    <div className="land">
-      <CursorGlow />
-      <section className="land-hero">
-        <div className="land-copy">
-          <p className="land-eye">Персональная AI-школа</p>
-          <h1>
+    <div className="land land-v2">
+      <section className="hero-v2">
+        <ShaderWave className="hero-v2-bg" />
+        <div className="hero-v2-copy">
+          <p className="hero-chip">
+            <span className="hero-chip-dot" />
+            Персональная AI-школа
+          </p>
+          <h1 className="hero-title">
             {who ? (
               <>
-                {who}, продолжим.
-                <br />
-                Репетитор помнит, где ты остановился.
+                <span className="rise" style={{ animationDelay: "0ms" }}>{who},</span>{" "}
+                <span className="rise grad-text" style={{ animationDelay: "120ms" }}>продолжим</span>
               </>
             ) : (
               <>
-                Понять тему.
-                <br />
-                А не списать ответ.
+                <span className="rise" style={{ animationDelay: "0ms" }}>Понять</span> <RotatingWord />
+                <span className="rise hero-title-sub" style={{ animationDelay: "240ms" }}>а не списать ответ</span>
               </>
             )}
           </h1>
-          <p className="land-lead">
-            Репетитор объясняет с нуля, подстраивается под класс и не отдаёт решение, пока ты не попробуешь.
+          <p className="hero-lead rise" style={{ animationDelay: "360ms" }}>
+            Репетитор объясняет с нуля и не отдаёт решение, пока ты не попробуешь.
           </p>
-          <div className="land-cta">
+          <div className="land-cta rise" style={{ animationDelay: "480ms" }}>
             <MagneticCta>
               {who || rememberedWho ? (
                 <Button magnetic onClick={start} onMouseEnter={() => setMood("happy")} onMouseLeave={() => setMood("idle")}>
@@ -92,48 +175,47 @@ export function HomeLanding() {
               Открыть репетитора
             </Button>
           </div>
-          <p className="land-note">Аккаунт и прогресс сохраняются. Свой кабинет собирается за минуты.</p>
         </div>
-        <div className="land-stage">
+        <div className="hero-v2-stage rise" style={{ animationDelay: "200ms" }}>
           <KnowledgeFlow size="lg" mood={mood} subject="mix" />
-          <span className="land-glass" style={{ top: "8%", left: "6%" }}>Английский · A1</span>
-          <span className="land-glass" style={{ top: "18%", right: "8%" }}>Мастерство 72%</span>
-          <span className="land-glass" style={{ bottom: "14%", left: "10%" }}>Сначала шаг</span>
         </div>
       </section>
 
-      <section className="land-split">
-        <div>
-          <p className="land-eye">Проблема</p>
-          <h2>Один учебник не подходит всем.</h2>
-          <p className="land-sub">Кому-то скучно. Кто-то теряется. Micro AI School настраивает объяснение на тебя — не на средний класс.</p>
-        </div>
-        <blockquote className="land-quote">
-          <p>«Объясни, как будто мне 13. Ответ пока не говори.»</p>
-          <cite>Так начинается настоящий урок</cite>
-        </blockquote>
+      <section className="tapes">
+        <Tape items={TAPE_A} />
+        <Tape items={TAPE_B} reverse />
       </section>
 
-      <section className="land-split rev">
-        <div className="land-feature-list">
-          {FEATURES.map((b) => {
-            const Icon = b.icon;
-            return (
-              <article key={b.t}>
-                <Icon size={18} aria-hidden />
-                <div>
-                  <h3>{b.t}</h3>
-                  <p>{b.d}</p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <div>
-          <p className="land-eye">Решение</p>
-          <h2>AI подстраивается под тебя.</h2>
-          <p className="land-sub">Имя, класс, язык, слабые темы и текущий урок остаются в разговоре.</p>
-        </div>
+      <section className="duo">
+        <Reveal>
+          <p className="land-eye">Как это выглядит</p>
+          <h2 className="display-h2">
+            Не ответ.
+            <br />
+            <span className="grad-text">Путь к ответу.</span>
+          </h2>
+          <p className="land-sub">Один вопрос за раз. Последний шаг всегда делаешь ты.</p>
+        </Reveal>
+        <Reveal delay={120}>
+          <StepDemo />
+        </Reveal>
+      </section>
+
+      <section className="bento">
+        {FEATURES.map((f, i) => {
+          const Icon = f.icon;
+          return (
+            <Reveal key={f.t} delay={i * 90}>
+              <SpotlightCard className="bento-card">
+                <span className="bento-orb">
+                  <Icon size={20} aria-hidden />
+                </span>
+                <h3>{f.t}</h3>
+                <p>{f.d}</p>
+              </SpotlightCard>
+            </Reveal>
+          );
+        })}
       </section>
 
       <PageTurn id="home" />
