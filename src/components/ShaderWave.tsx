@@ -2,149 +2,73 @@
 
 import { useEffect, useRef } from "react";
 
-const VERT = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+const W = 2000;
+const H = 1000;
+const TOP = 280;
 
-const FRAG = `
-precision mediump float;
-uniform vec2 r;
-uniform float t;
-uniform vec2 m;
+type Layer = { base: number; a1: number; k1: number; a2: number; k2: number; ph: number; fill: string; op: number; dur: number };
 
-float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+const LAYERS: Layer[] = [
+  { base: 700, a1: 55, k1: 1, a2: 22, k2: 3, ph: 0.4, fill: "#2e8ced", op: 0.2, dur: 46 },
+  { base: 615, a1: 48, k1: 2, a2: 18, k2: 3, ph: 1.9, fill: "#4aa3f0", op: 0.17, dur: 38 },
+  { base: 530, a1: 42, k1: 1, a2: 20, k2: 4, ph: 3.1, fill: "#72bdf7", op: 0.15, dur: 31 },
+  { base: 445, a1: 36, k1: 2, a2: 14, k2: 5, ph: 4.4, fill: "#9fd2fb", op: 0.13, dur: 26 },
+  { base: 360, a1: 30, k1: 1, a2: 12, k2: 3, ph: 5.2, fill: "#c7e6ff", op: 0.12, dur: 22 },
+];
 
-void main(){
-  vec2 uv=gl_FragCoord.xy/r;
-  float a=r.x/r.y;
-  vec2 p=vec2(uv.x*a,uv.y);
-  vec3 col=vec3(0.975,0.988,1.0);
-  vec3 deep=vec3(0.18,0.55,0.93);
-  vec3 sky=vec3(0.45,0.78,1.0);
-  vec3 ice=vec3(0.78,0.91,1.0);
-
-  vec2 mp=vec2(m.x*a,m.y);
-  col=mix(col,sky,0.16*exp(-length(p-mp)*2.6));
-  col=mix(col,vec3(0.72,0.84,1.0),0.22*exp(-length(p-vec2(a*0.85,0.85))*1.8));
-
-  for(int i=0;i<5;i++){
-    float fi=float(i);
-    float sp=0.22+fi*0.07;
-    float y=0.3+fi*0.085
-      +0.055*sin(p.x*(1.3+fi*0.35)+t*sp+fi*1.9)
-      +0.025*sin(p.x*(3.2-fi*0.2)-t*(sp*1.6)+fi)
-      +0.03*(m.y-0.5)*sin(p.x*2.1+t*0.5+fi);
-    float d=uv.y-y;
-    vec3 wc=mix(deep,ice,fi/4.0);
-    float fill=smoothstep(0.015,-0.32,d);
-    col=mix(col,wc,fill*(0.2-fi*0.02));
-    float line=exp(-abs(d)*(170.0-fi*18.0));
-    col=mix(col,vec3(1.0),line*0.6);
-    col=mix(col,wc,exp(-abs(d-0.004)*380.0)*0.45);
+function wavePath(l: Layer, closed: boolean) {
+  let d = "";
+  for (let x = 0; x <= W; x += 20) {
+    const t = (x / (W / 2)) * Math.PI * 2;
+    const y = l.base - l.a1 * Math.sin(t * l.k1 + l.ph) - l.a2 * Math.sin(t * l.k2 - l.ph * 1.3);
+    d += `${x === 0 ? "M" : "L"}${x} ${y.toFixed(1)}`;
   }
+  return closed ? `${d}L${W} ${H}L0 ${H}Z` : d;
+}
 
-  col-=(hash(gl_FragCoord.xy+t)-0.5)*0.018;
-  gl_FragColor=vec4(col,1.0);
-}`;
+const PATHS = LAYERS.map((l) => ({ fill: wavePath(l, true), line: wavePath(l, false) }));
 
 export function ShaderWave({ className = "" }: { className?: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: false, powerPreference: "low-power" });
-    if (!gl) {
-      canvas.dataset.fallback = "1";
-      return;
-    }
-    const compile = (type: number, src: string) => {
-      const s = gl.createShader(type)!;
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      return s;
-    };
-    const prog = gl.createProgram()!;
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      canvas.dataset.fallback = "1";
-      return;
-    }
-    gl.useProgram(prog);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, "p");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const uR = gl.getUniformLocation(prog, "r");
-    const uT = gl.getUniformLocation(prog, "t");
-    const uM = gl.getUniformLocation(prog, "m");
-
-    const coarse = window.matchMedia("(pointer: coarse), (max-width: 767px)").matches;
-    const weak = coarse && (navigator.hardwareConcurrency || 4) <= 4;
-    const still = weak || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const scale = coarse ? 0.35 : 0.5;
-    const frameMs = coarse ? 1000 / 24 : 1000 / 30;
-    const mouse = { x: 0.3, y: 0.6, tx: 0.3, ty: 0.6 };
+    const glow = glowRef.current;
+    if (!glow || window.matchMedia("(pointer: coarse), (prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
-    let visible = true;
-    let last = 0;
-    const start = performance.now();
-
-    const resize = () => {
-      const w = Math.max(1, Math.round(canvas.clientWidth * scale));
-      const h = Math.max(1, Math.round(canvas.clientHeight * scale));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        gl.viewport(0, 0, w, h);
-      }
-    };
-
-    const draw = (now: number) => {
-      if (!still && now - last < frameMs) {
-        raf = requestAnimationFrame(draw);
-        return;
-      }
-      last = now;
-      resize();
-      mouse.x += (mouse.tx - mouse.x) * 0.1;
-      mouse.y += (mouse.ty - mouse.y) * 0.1;
-      gl.uniform2f(uR, canvas.width, canvas.height);
-      gl.uniform1f(uT, still ? 8 : (now - start) / 1000);
-      gl.uniform2f(uM, mouse.x, mouse.y);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      if (!still && visible && !document.hidden) raf = requestAnimationFrame(draw);
-    };
-
+    let x = 0;
+    let y = 0;
     const onMove = (e: PointerEvent) => {
-      const b = canvas.getBoundingClientRect();
-      mouse.tx = (e.clientX - b.left) / b.width;
-      mouse.ty = 1 - (e.clientY - b.top) / b.height;
+      x = e.clientX;
+      y = e.clientY;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        glow.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      });
     };
-    const kick = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(draw);
-    };
-    const io = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      if (visible) kick();
-    });
-    io.observe(canvas.parentElement ?? canvas);
-    if (!coarse) window.addEventListener("pointermove", onMove, { passive: true });
-    document.addEventListener("visibilitychange", kick);
-    window.addEventListener("resize", kick);
-    kick();
-
+    window.addEventListener("pointermove", onMove, { passive: true });
     return () => {
       cancelAnimationFrame(raf);
-      io.disconnect();
       window.removeEventListener("pointermove", onMove);
-      document.removeEventListener("visibilitychange", kick);
-      window.removeEventListener("resize", kick);
     };
   }, []);
 
-  return <canvas ref={ref} className={`shader-wave ${className}`} aria-hidden />;
+  return (
+    <div className={`shader-wave ${className}`} aria-hidden>
+      <div ref={glowRef} className="sw-glow" />
+      {LAYERS.map((l, i) => (
+        <div key={i} className="sw-layer" style={{ animationDuration: `${9 + i * 2}s`, animationDelay: `${-i * 1.7}s` }}>
+          <svg
+            viewBox={`0 ${TOP} ${W} ${H - TOP}`}
+            preserveAspectRatio="none"
+            className="sw-svg"
+            style={{ animationDuration: `${l.dur}s`, animationDirection: i % 2 ? "reverse" : "normal" }}
+          >
+            <path d={PATHS[i].fill} fill={l.fill} fillOpacity={l.op} />
+            <path d={PATHS[i].line} className="sw-line" vectorEffect="non-scaling-stroke" />
+          </svg>
+        </div>
+      ))}
+    </div>
+  );
 }
