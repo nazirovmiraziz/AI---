@@ -5,7 +5,11 @@ import { useEffect, useRef } from "react";
 const VERT = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
 
 const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform vec2 r;
 uniform float t;
 uniform vec2 m;
@@ -41,7 +45,7 @@ void main(){
     col=mix(col,wc,exp(-abs(d-0.004)*380.0)*0.45);
   }
 
-  col-=(hash(gl_FragCoord.xy+t)-0.5)*0.018;
+  col-=(hash(floor(gl_FragCoord.xy))-0.5)*0.008;
   gl_FragColor=vec4(col,1.0);
 }`;
 
@@ -84,8 +88,9 @@ export function ShaderWave({ className = "" }: { className?: string }) {
     const coarse = window.matchMedia("(pointer: coarse), (max-width: 767px)").matches;
     const weak = coarse && (navigator.hardwareConcurrency || 4) <= 4;
     const still = weak || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const scale = coarse ? 0.35 : 0.5;
-    const frameMs = coarse ? 1000 / 24 : 1000 / 30;
+    const dpr = window.devicePixelRatio || 1;
+    const maxPixels = coarse ? 1_100_000 : 2_400_000;
+    const frameMs = 1000 / 61;
     const mouse = { x: 0.3, y: 0.6, tx: 0.3, ty: 0.6 };
     let raf = 0;
     let visible = true;
@@ -93,8 +98,11 @@ export function ShaderWave({ className = "" }: { className?: string }) {
     const start = performance.now();
 
     const resize = () => {
-      const w = Math.max(1, Math.round(canvas.clientWidth * scale));
-      const h = Math.max(1, Math.round(canvas.clientHeight * scale));
+      const cw = canvas.clientWidth;
+      const ch = canvas.clientHeight;
+      const scale = Math.min(dpr, Math.sqrt(maxPixels / Math.max(1, cw * ch)));
+      const w = Math.max(1, Math.round(cw * scale));
+      const h = Math.max(1, Math.round(ch * scale));
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
