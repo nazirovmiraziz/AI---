@@ -141,6 +141,11 @@ html.site-home body {
   position: static !important;
   inset: auto !important;
 }
+html.site-home body {
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+  overscroll-behavior: auto;
+}
 html.site-home .site-shell {
   position: relative;
   inset: auto;
