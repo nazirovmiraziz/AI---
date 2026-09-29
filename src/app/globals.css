@@ -4558,57 +4558,7 @@ html.site-home:has(.land-v2) .site-nav { max-width: calc(100% - clamp(0.5rem, 3v
   }
 }
 
-.shader-wave {
-  overflow: hidden;
-  pointer-events: none;
-  contain: strict;
-}
-.sw-glow {
-  position: absolute;
-  left: -18rem;
-  top: -18rem;
-  width: 36rem;
-  height: 36rem;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(110, 196, 245, 0.28), transparent 65%);
-  transform: translate3d(30vw, 55vh, 0);
-  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-.sw-layer {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 28%;
-  bottom: 0;
-  animation: sw-bob 10s ease-in-out infinite alternate;
-  will-change: transform;
-}
-.sw-svg {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 200%;
-  height: 100%;
-  animation: sw-move 30s linear infinite;
-  will-change: transform;
-}
-.sw-line {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.9);
-  stroke-width: 1.4;
-}
-@keyframes sw-move { to { transform: translate3d(-50%, 0, 0); } }
-@keyframes sw-bob {
-  from { transform: translate3d(0, -1.2%, 0); }
-  to { transform: translate3d(0, 1.2%, 0); }
-}
-@media (max-width: 767px), (pointer: coarse) {
-  .sw-layer:nth-of-type(odd):not(:nth-of-type(1)) { display: none; }
-  .sw-glow { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sw-layer, .sw-svg { animation: none !important; }
-}
+.shader-wave { pointer-events: none; }
 *,
 *::before,
 *::after {
