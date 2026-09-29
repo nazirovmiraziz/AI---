@@ -48,9 +48,15 @@ export function AmbientField() {
           vy: (Math.random() - 0.5) * 0.00022,
           r: 0.55 + Math.random() * 1.05,
         }));
-        const tick = () => {
+        let last = 0;
+        const tick = (now: number) => {
           if (stop) return;
-          if (!document.hidden) {
+          if (now - last < 33) {
+            raf = requestAnimationFrame(tick);
+            return;
+          }
+          last = now;
+          if (!document.hidden && !document.querySelector(".hero-v2-bg")) {
             const w = canvas.width;
             const h = canvas.height;
             ctx.clearRect(0, 0, w, h);

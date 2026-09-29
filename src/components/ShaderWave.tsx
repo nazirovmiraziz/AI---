@@ -81,16 +81,20 @@ export function ShaderWave({ className = "" }: { className?: string }) {
     const uT = gl.getUniformLocation(prog, "t");
     const uM = gl.getUniformLocation(prog, "m");
 
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const coarse = window.matchMedia("(pointer: coarse), (max-width: 767px)").matches;
+    const weak = coarse && (navigator.hardwareConcurrency || 4) <= 4;
+    const still = weak || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const scale = coarse ? 0.35 : 0.5;
+    const frameMs = coarse ? 1000 / 24 : 1000 / 30;
     const mouse = { x: 0.3, y: 0.6, tx: 0.3, ty: 0.6 };
     let raf = 0;
     let visible = true;
+    let last = 0;
     const start = performance.now();
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-      const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      const w = Math.max(1, Math.round(canvas.clientWidth * scale));
+      const h = Math.max(1, Math.round(canvas.clientHeight * scale));
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -99,9 +103,14 @@ export function ShaderWave({ className = "" }: { className?: string }) {
     };
 
     const draw = (now: number) => {
+      if (!still && now - last < frameMs) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      last = now;
       resize();
-      mouse.x += (mouse.tx - mouse.x) * 0.05;
-      mouse.y += (mouse.ty - mouse.y) * 0.05;
+      mouse.x += (mouse.tx - mouse.x) * 0.1;
+      mouse.y += (mouse.ty - mouse.y) * 0.1;
       gl.uniform2f(uR, canvas.width, canvas.height);
       gl.uniform1f(uT, still ? 8 : (now - start) / 1000);
       gl.uniform2f(uM, mouse.x, mouse.y);
@@ -122,8 +131,8 @@ export function ShaderWave({ className = "" }: { className?: string }) {
       visible = entry.isIntersecting;
       if (visible) kick();
     });
-    io.observe(canvas);
-    window.addEventListener("pointermove", onMove, { passive: true });
+    io.observe(canvas.parentElement ?? canvas);
+    if (!coarse) window.addEventListener("pointermove", onMove, { passive: true });
     document.addEventListener("visibilitychange", kick);
     window.addEventListener("resize", kick);
     kick();

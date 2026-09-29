@@ -88,6 +88,8 @@ const FIELDS: Record<FlowSubject, { nodes: { x: number; y: number; t: string }[]
   },
 };
 
+const CHIP_COLORS = ["#3aa0e8", "#22c39a", "#8b7bff", "#f5a524", "#ef6f9a", "#1fb6c9", "#5b8def"];
+
 export function KnowledgeFlow({
   subject = "mix",
   mood = "idle",
@@ -137,41 +139,73 @@ export function KnowledgeFlow({
         fit();
         window.addEventListener("resize", fit);
         let t = 0;
-        const tick = () => {
+        let last = 0;
+        let visible = true;
+        const io = new IntersectionObserver(([entry]) => {
+          visible = entry.isIntersecting;
+          if (visible && !raf && !stop) raf = requestAnimationFrame(tick);
+        });
+        io.observe(root);
+        const tick = (now: number) => {
           if (stop) return;
-          t += 0.008;
+          if (!visible || document.hidden) {
+            raf = 0;
+            return;
+          }
+          if (now - last < 33) {
+            raf = requestAnimationFrame(tick);
+            return;
+          }
+          last = now;
+          t += 0.016;
           const w = canvas.width;
           const h = canvas.height;
           ctx.clearRect(0, 0, w, h);
-          ctx.strokeStyle = "rgba(58, 160, 232, 0.22)";
-          ctx.lineWidth = Math.max(1, w * 0.002);
-          for (const [a, b] of field.edges) {
+          const r = Math.max(2, w * 0.0045);
+          field.edges.forEach(([a, b], i) => {
             const na = field.nodes[a];
             const nb = field.nodes[b];
             const x1 = (na.x / 100) * w;
             const y1 = (na.y / 100) * h;
             const x2 = (nb.x / 100) * w;
             const y2 = (nb.y / 100) * h;
-            const mx = (x1 + x2) / 2 + Math.sin(t + a) * 8;
-            const my = (y1 + y2) / 2 + Math.cos(t + b) * 6;
+            const p = (t * 0.35 + i * 0.37) % 1;
+            const px = x1 + (x2 - x1) * p;
+            const py = y1 + (y2 - y1) * p;
+            const fade = Math.sin(p * Math.PI);
+            const tx = px - (x2 - x1) * 0.08;
+            const ty = py - (y2 - y1) * 0.08;
+            const g = ctx.createLinearGradient(tx, ty, px, py);
+            g.addColorStop(0, "rgba(110, 196, 245, 0)");
+            g.addColorStop(1, `rgba(58, 160, 232, ${0.55 * fade})`);
+            ctx.strokeStyle = g;
+            ctx.lineWidth = r * 1.1;
+            ctx.lineCap = "round";
             ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.quadraticCurveTo(mx, my, x2, y2);
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(px, py);
             ctx.stroke();
-            const p = (Math.sin(t * 1.6 + a + b) + 1) / 2;
-            const px = (1 - p) * (1 - p) * x1 + 2 * (1 - p) * p * mx + p * p * x2;
-            const py = (1 - p) * (1 - p) * y1 + 2 * (1 - p) * p * my + p * p * y2;
             ctx.beginPath();
-            ctx.fillStyle = "rgba(110, 196, 245, 0.85)";
-            ctx.arc(px, py, Math.max(1.6, w * 0.004), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(58, 160, 232, ${0.22 * fade})`;
+            ctx.arc(px, py, r * 2.6, 0, Math.PI * 2);
             ctx.fill();
-          }
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * fade})`;
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fill();
+          });
           raf = requestAnimationFrame(tick);
         };
         raf = requestAnimationFrame(tick);
+        const onVis = () => {
+          if (!document.hidden && visible && !raf && !stop) raf = requestAnimationFrame(tick);
+        };
+        document.addEventListener("visibilitychange", onVis);
         return () => {
           stop = true;
           cancelAnimationFrame(raf);
+          io.disconnect();
+          document.removeEventListener("visibilitychange", onVis);
           window.removeEventListener("resize", fit);
           root.removeEventListener("pointermove", onMove);
           root.removeEventListener("pointerleave", onLeave);
@@ -191,33 +225,43 @@ export function KnowledgeFlow({
     <div ref={rootRef} className={`kf-stage ${size} ${mood}`} aria-hidden>
       <div className="kf-glow" />
       <canvas ref={canvasRef} className="kf-canvas" />
-      <svg className="kf-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-        {field.edges.map(([a, b]) => (
-          <line
-            key={`${a}-${b}`}
-            x1={field.nodes[a].x}
-            y1={field.nodes[a].y}
-            x2={field.nodes[b].x}
-            y2={field.nodes[b].y}
-            className="kf-edge"
-          />
-        ))}
-        {field.nodes.map((n) => (
-          <g key={`${n.x}-${n.t}`} className="kf-node" style={{ transformOrigin: `${n.x}px ${n.y}px` }}>
-            <circle cx={n.x} cy={n.y} r={n.t === "AI" ? 4.2 : 2.4} />
-          </g>
-        ))}
+      <svg className="kf-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="kf-line" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="100">
+            <stop offset="0" stopColor="#7fd0ff" />
+            <stop offset="1" stopColor="#2b8fe0" />
+          </linearGradient>
+        </defs>
+        {field.edges.map(([a, b], i) => {
+          const hub = a === field.nodes.length - 1 || b === field.nodes.length - 1;
+          const d = `M${field.nodes[a].x} ${field.nodes[a].y} L${field.nodes[b].x} ${field.nodes[b].y}`;
+          return (
+            <g key={`${a}-${b}`}>
+              <path d={d} className={`kf-edge ${hub ? "hub" : ""}`} vectorEffect="non-scaling-stroke" />
+              <path
+                d={d}
+                className="kf-flow"
+                vectorEffect="non-scaling-stroke"
+                style={{ animationDelay: `${-i * 0.45}s` }}
+              />
+            </g>
+          );
+        })}
       </svg>
       <div className="kf-chips">
-        {field.nodes.map((n) => (
-          <span
-            key={`${n.t}-${n.x}`}
-            className={n.t === "AI" ? "core" : ""}
-            style={{ left: `${n.x}%`, top: `${n.y}%` }}
-          >
-            {n.t}
-          </span>
-        ))}
+        {field.nodes.map((n, i) => {
+          const core = n.t === "AI" || i === field.nodes.length - 1;
+          return (
+            <span
+              key={`${n.t}-${n.x}`}
+              className={core ? "core" : ""}
+              style={{ left: `${n.x}%`, top: `${n.y}%`, animationDelay: `${-i * 0.9}s` }}
+            >
+              {core ? null : <i style={{ background: CHIP_COLORS[i % CHIP_COLORS.length] }} />}
+              {n.t}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
