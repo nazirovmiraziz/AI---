@@ -56,8 +56,11 @@ export function avatarOnUserMessage(text: string) {
   }, reaction?.emotion === "greeting" || reaction?.emotion === "goodbye" ? 1400 : 700);
 }
 
-export function avatarOnReply(reaction: AvatarReaction) {
-  getAvatar().react(reaction, 5.5);
+export function avatarOnReply(reaction: AvatarReaction, text = "") {
+  const avatar = getAvatar();
+  avatar.react(reaction, 5.5);
+  const said = text.replace(/[*_#`>$\\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 90);
+  if (said) avatar.mouthText(said);
 }
 
 export function avatarOnError() {

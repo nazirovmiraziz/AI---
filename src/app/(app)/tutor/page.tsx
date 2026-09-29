@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
-import { Camera, Mic, Paperclip, Pause, Play, Plus, Send, Square, X } from "lucide-react";
+import { Camera, Mic, Paperclip, Pause, Play, Plus, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/store";
@@ -15,13 +15,11 @@ import { groupChatsByDay } from "@/lib/ai/context";
 import { evaluateStudentAnswer } from "@/lib/ai-engine";
 import { DEMO_EMAIL, XP_REWARDS } from "@/lib/demo-data";
 import { ChatText } from "@/components/ChatText";
-import { TutorBot } from "@/components/TutorBot";
 import { VoiceWave } from "@/components/VoiceWave";
-import type { BotMood } from "@/components/TutorBot";
 import { firstName, stripFakeNames } from "@/lib/cabinet";
 import { useChatViewport } from "@/lib/use-chat-viewport";
 import type { AiMode } from "@/lib/types";
-import { TutorAvatarPanel } from "@/components/avatar/TutorAvatarPanel";
+import { AiFace, AiFaceStatus } from "@/components/avatar/AiFace";
 import { getAvatar } from "@/components/avatar/AvatarController";
 import {
   avatarOnError,
@@ -290,7 +288,7 @@ function TutorInner() {
         patchMessage(id, mid, { content: res.content || t(loc, "tutor.fail"), meta: { ...res.meta, status: "error", error: res.error } });
       } else {
         const full = (res.content || t(loc, "tutor.fail")) + extra;
-        avatarOnReply(evalOk !== null ? inferReaction(content, full, evalOk) : res.avatar ?? inferReaction(content, full));
+        avatarOnReply(evalOk !== null ? inferReaction(content, full, evalOk) : res.avatar ?? inferReaction(content, full), full);
         await reveal(id, mid, full, res.meta);
         if (voiceAutoRef.current && !stopRef.current) startSpeech(full);
       }
@@ -417,7 +415,6 @@ function TutorInner() {
   const msgs = conv?.messages ?? [];
   const empty = msgs.length === 0;
   const onlyWelcome = msgs.length > 0 && msgs.every((m) => m.role === "assistant");
-  const botMood: BotMood = listening ? "listen" : voicePhase === "understand" || busy ? "think" : speaking ? "speak" : "idle";
   const status = listening
     ? "Слушаю"
     : voicePhase === "understand"
@@ -488,15 +485,12 @@ function TutorInner() {
 
       {mobileChats && <button type="button" className="chat-dim chat-mobile-only" aria-label="Закрыть" onClick={() => setMobileChats(false)} />}
 
-      <section className="chat-stage has-avatar">
-        <div className="avatar-stage">
-        <TutorAvatarPanel voiceOn={voiceAuto} onToggleVoice={toggleVoiceAuto} />
-        <div className="avatar-stage-main">
+      <section className="chat-stage">
         <div className="gpt-top">
           <button type="button" className="chat-mobile-only gpt-top-btn" onClick={() => setMobileChats(true)}>
             Чаты
           </button>
-          <TutorBot size="sm" mood={botMood} look={false} />
+          <AiFace size="xs" />
           <div className="gpt-head-copy">
             <p className="gpt-top-title">AI-репетитор</p>
             <p className="gpt-top-live">
@@ -504,6 +498,16 @@ function TutorInner() {
               {status}
             </p>
           </div>
+          <button
+            type="button"
+            className="gpt-top-btn"
+            onClick={toggleVoiceAuto}
+            aria-pressed={voiceAuto}
+            aria-label={voiceAuto ? "Выключить озвучку ответов" : "Озвучивать ответы"}
+            title={voiceAuto ? "Озвучка ответов включена" : "Озвучка ответов выключена"}
+          >
+            {voiceAuto ? <Volume2 size={15} /> : <VolumeX size={15} />}
+          </button>
           <button type="button" className="gpt-top-btn" onClick={() => addConversation({ mode: conv?.mode ?? "chat" })} aria-label="Новый чат">
             +
           </button>
@@ -528,9 +532,18 @@ function TutorInner() {
         </div>
 
         <div ref={feedRef} className="flex-1 min-h-0 overflow-y-auto gpt-feed">
+          {!(empty || onlyWelcome) && (
+            <div className="gpt-face-dock">
+              <AiFace size="md" />
+              <AiFaceStatus />
+            </div>
+          )}
           {(empty || onlyWelcome) && (
             <div className="gpt-hero">
-              <TutorBot size="md" mood={botMood} />
+              <div className="gpt-hero-face">
+                <AiFace size="lg" />
+                <AiFaceStatus />
+              </div>
               <h1>{who ? `Привет, ${who}. Что разберём?` : "Привет! Что хочешь разобрать сегодня?"}</h1>
               <p>Напиши вопрос, отправь фото или нажми на микрофон.</p>
               <div className="gpt-quick">
@@ -547,7 +560,7 @@ function TutorInner() {
             <div key={m.id} className={`gpt-row ${m.role === "user" ? "me" : "bot"}`}>
               {m.role !== "user" && (
                 <span className="gpt-ava">
-                  <TutorBot size="sm" look={false} mood={m.meta?.status === "thinking" ? "think" : m.meta?.status === "error" ? "error" : "idle"} />
+                  <AiFace size="xs" live={false} emotion={m.meta?.status === "thinking" ? "thinking" : m.meta?.status === "error" ? "worried" : "neutral"} />
                 </span>
               )}
               <div className="gpt-col">
@@ -679,8 +692,6 @@ function TutorInner() {
           <input ref={fileRef} type="file" accept="image/*,.pdf,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ""; }} />
         </form>
-        </div>
-        </div>
       </section>
 
       <ConfirmDialog

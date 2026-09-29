@@ -34,8 +34,7 @@ export class AvatarController {
 
   mode: AvatarMode = "idle";
   enabled = true;
-  /** Called with the resolved gesture name whenever one starts (used by GLB rigs to play matching clips). */
-  onGesture: ((name: string) => void) | null = null;
+  private lastSample = -1;
   private reaction: { emotion: Emotion; intensity: number; until: number } | null = null;
   private time = 0;
   private nextAuto = 2;
@@ -83,12 +82,21 @@ export class AvatarController {
 
   private play(name: string, opts?: PlayOptions) {
     const ok = this.animation.play(name, opts);
-    if (ok) {
-      this.lastGesture = name;
-      const key = AnimationController.resolve(name);
-      if (key) this.onGesture?.(key);
-    }
+    if (ok) this.lastGesture = name;
     return ok;
+  }
+
+  /** Silent mouth movement, e.g. while a reply is being written out. */
+  mouthText(text: string) {
+    if (!this.lipSync.speaking) this.lipSync.start(text);
+  }
+
+  /** Frame-shared update: every face on the page can call this with the rAF timestamp. */
+  sample(now: number): Pose {
+    if (now === this.lastSample) return this.pose;
+    const dt = this.lastSample < 0 ? 1 / 60 : Math.min(0.05, Math.max(0, (now - this.lastSample) / 1000));
+    this.lastSample = now;
+    return this.update(dt);
   }
 
   setMode(mode: AvatarMode) {
@@ -235,7 +243,7 @@ export class AvatarController {
 
 let shared: AvatarController | null = null;
 
-/** One controller per page, shared by the chat bridge and the renderer. */
+/** One controller per page, shared by the chat bridge and every face. */
 export function getAvatar() {
   if (!shared) {
     shared = new AvatarController();

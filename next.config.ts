@@ -1,14 +1,7 @@
 import type { NextConfig } from "next";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-
-const avatarGlb = existsSync(join(process.cwd(), "public", "avatar.glb")) ? "/avatar.glb" : "";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  env: {
-    NEXT_PUBLIC_AVATAR_GLB: avatarGlb,
-  },
   poweredByHeader: false,
   eslint: {
     ignoreDuringBuilds: true,
